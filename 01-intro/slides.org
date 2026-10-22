@@ -1,0 +1,645 @@
+#+TITLE: Why DevOps?
+#+SUBTITLE: From the Dev vs Ops conflict to a culture of fast, reliable delivery
+#+SETUPFILE: ../common/slides.setup
+
+* Opening
+
+** Today's agenda
+
+1. A story: 45 minutes, \dollar{}440 million
+2. How software used to ship
+3. The Dev vs Ops problem
+4. The birth of DevOps
+5. What DevOps is (and is not)
+6. Measuring DevOps
+7. The DevOps lifecycle and this course
+
+#+BEAMER: \vfill
+#+begin_keyblock
+Today's question: */why/* do we need DevOps at all? The /how/ comes in the rest of the course.
+#+end_keyblock
+
+** A story: Knight Capital, August 1st, 2012
+:PROPERTIES:
+:BEAMER_opt: t
+:END:
+
+- Knight Capital: one of the largest US stock traders (~17% of NYSE volume)
+- Night before: new trading code deployed *by hand* to 8 servers
+- One server was *not updated*: still running old, dead code
+- A reused configuration flag reactivated that dead code
+- 9:30 market opens: the 8th server sends millions of unwanted orders
+- 97 automated warning e-mails before opening: nobody acted on them
+- *45 minutes* to stop it \rightarrow *\dollar{}440 million lost*
+- The company was sold a few months later
+
+#+BEAMER: \vfill
+#+begin_center
+\footnotesize Source: U.S. SEC, Administrative Proceeding File No. 3-15570 (2013)
+#+end_center
+
+** What went wrong?
+
+#+begin_center
+\Large Was this a /developer/ bug? An /operations/ mistake? Both? Neither?
+#+end_center
+
+#+BEAMER: \pause
+
+- Manual, unrepeatable deployment
+- No automated check that all servers were identical
+- Dead code kept in production, flags reused
+- Alerts that nobody watched or understood
+- No quick, rehearsed way to roll back
+
+#+BEAMER: \pause
+#+begin_warnblock
+None of these is a "coding" problem. They are problems of *process, automation, feedback and collaboration*, which is exactly what DevOps is about.
+#+end_warnblock
+
+* How software used to ship
+
+** The traditional lifecycle: Waterfall
+
+#+begin_export latex
+\begin{center}
+\begin{tikzpicture}[
+  stp/.style={draw, rounded corners, fill=devcol!15, minimum width=2.3cm, minimum height=0.5cm, font=\small},
+  arr/.style={-Stealth, thick}]
+  \node[stp] (r) at (0,0) {Requirements};
+  \node[stp] (d) at (2.2,-0.55) {Design};
+  \node[stp] (i) at (4.4,-1.1) {Implementation};
+  \node[stp] (v) at (6.6,-1.65) {Verification};
+  \node[stp, fill=opscol!15] (m) at (8.8,-2.2) {Operations};
+  \draw[arr] (r.east) -| (d.north);
+  \draw[arr] (d.east) -| (i.north);
+  \draw[arr] (i.east) -| (v.north);
+  \draw[arr] (v.east) -| (m.north);
+\end{tikzpicture}
+\end{center}
+#+end_export
+
+- Sequential phases, each handed to the next team
+- Releases every *6 to 18 months*
+- Feedback from real users arrives... at the very end
+- Irony: W. Royce (1970), often cited as its inventor, described it as "risky and invites failure"
+
+** Agile (2001): closing the Business-Dev gap
+
+*** Left
+:PROPERTIES:
+:BEAMER_col: 0.45
+:END:
+
+- /Manifesto for Agile Software Development/ (2001)
+- Short iterations (sprints of 1-4 weeks)
+- Customer collaboration, working software, responding to change
+- Scrum, XP, Kanban...
+
+*** Right
+:PROPERTIES:
+:BEAMER_col: 0.55
+:END:
+
+#+begin_export latex
+\begin{tikzpicture}[box/.style={draw, rounded corners, minimum width=1.4cm, minimum height=0.8cm, font=\small}]
+  \node[box, fill=gray!15] (b) at (0,0) {Business};
+  \node[box, fill=devcol!20] (d) at (2.6,0) {Dev};
+  \node[box, fill=opscol!20] (o) at (5.2,0) {Ops};
+  \draw[{Stealth}-{Stealth}, very thick, green!50!black] (b) -- node[above=2pt, font=\scriptsize]{Agile} (d);
+  \draw[very thick, opscol, dashed] (d) -- node[above, font=\scriptsize]{?} (o);
+\end{tikzpicture}
+#+end_export
+
+#+BEAMER: \pause
+#+begin_warnblock
+Dev now produces working software every 2 weeks... but it still reaches production every 6 months.
+#+end_warnblock
+
+** "Done" is not "delivered"
+
+#+begin_center
+\Large "It's done, it just isn't deployed yet."
+#+end_center
+
+#+BEAMER: \vspace{0.5cm}
+
+- A feature has *zero value* until users can use it
+- Code waiting to be deployed = *inventory* (Lean): it costs money, hides bugs, and gets stale
+- Agile optimised a part of the chain; the bottleneck moved to *delivery and operations*
+
+#+BEAMER: \vfill
+#+begin_keyblock
+Lean idea: optimise the *whole value stream*, from idea to user, not each team separately.
+#+end_keyblock
+
+* The Dev vs Ops problem
+
+** Two teams, two missions
+
+*** Dev
+:PROPERTIES:
+:BEAMER_col: 0.48
+:BEAMER_env: block
+:END:
+
+- Mission: *deliver change* (new features, fixes)
+- Rewarded for: speed, features shipped
+- Environment: laptop, test server
+- Sees production as: "someone else's problem"
+
+*** Ops
+:PROPERTIES:
+:BEAMER_col: 0.48
+:BEAMER_env: alertblock
+:END:
+
+- Mission: *keep things stable* (availability, security)
+- Rewarded for: uptime, no incidents
+- Environment: real servers, real load, real data
+- Sees change as: "the main cause of outages"
+
+*** Conclusion
+:PROPERTIES:
+:BEAMER_env: ignoreheading
+:END:
+
+#+BEAMER: \vspace{0.4cm}
+#+begin_center
+Both are rational. Their goals are *structurally opposed*: \\
+every change Dev wants is a risk Ops must absorb.
+#+end_center
+
+** The "wall of confusion"
+
+#+begin_export latex
+\begin{center}
+\begin{tikzpicture}
+  \node[draw, rounded corners, fill=devcol!20, minimum width=3cm, minimum height=1.5cm, align=center] (dev) at (0,0) {\textbf{Dev}\\ \small ``ship it!''};
+  \node[draw, rounded corners, fill=opscol!20, minimum width=3cm, minimum height=1.5cm, align=center] (ops) at (8,0) {\textbf{Ops}\\ \small ``don't touch it!''};
+  \foreach \y in {-1.5,-1.0,...,1.5} {
+    \draw[fill=accent!60, draw=accent!80!black] (3.7,\y) rectangle (4.3,\y+0.5);
+  }
+  \node[font=\small\bfseries] at (4,-1.9) {Wall of confusion};
+  \draw[-Stealth, very thick, devcol] (dev.north) .. controls (2,3) and (6,3) .. node[above, font=\small]{code + ``it works on my machine''} (ops.north);
+  \draw[-Stealth, very thick, opscol, dashed] (ops.south) .. controls (6,-2.6) and (2,-2.6) .. node[below, font=\small]{tickets, blame, ``your code broke prod''} (dev.south);
+\end{tikzpicture}
+\end{center}
+#+end_export
+
+** Symptom 1: "It works on my machine"
+
+- Dev environment \ne test environment \ne production environment
+  - different OS versions, libraries, configuration, data, network
+- Installation instructions in a Word document or a wiki page (outdated)
+- Bugs that appear /only/ in production, and nobody can reproduce them
+
+#+BEAMER: \vfill
+#+begin_keyblock
+Root cause: the *environment* is not part of what is versioned, tested and delivered.
+#+end_keyblock
+
+\footnotesize \rightarrow Answers: containers and Infrastructure as Code
+
+** Symptom 2: rare, big, manual releases
+
+*** Left
+:PROPERTIES:
+:BEAMER_col: 0.55
+:END:
+
+- "Release weekend": 40-step runbook, 10 people, pizza, stress
+- Months of changes deployed at once
+- When it fails: which of the 500 changes broke it?
+- Rollback is hard or impossible
+
+*** Right
+:PROPERTIES:
+:BEAMER_col: 0.45
+:END:
+
+#+begin_export latex
+\begin{tikzpicture}[scale=0.8]
+  \draw[-Stealth] (0,0) -- (4.5,0) node[below left, font=\scriptsize]{batch size};
+  \draw[-Stealth] (0,0) -- (0,3.5) node[above, font=\scriptsize]{risk / cost of failure};
+  \draw[very thick, opscol] (0.2,0.2) .. controls (2.5,0.5) and (3.5,1.5) .. (4.2,3.3);
+  \fill[devcol] (0.6,0.25) circle (2pt) node[above, font=\scriptsize, devcol]{small, frequent};
+  \fill[opscol] (4.0,2.8) circle (2pt) node[left, font=\scriptsize, opscol]{big bang};
+\end{tikzpicture}
+#+end_export
+
+*** Conclusion
+:PROPERTIES:
+:BEAMER_env: ignoreheading
+:END:
+
+#+BEAMER: \vspace{0.3cm}
+#+begin_warnblock
+Risk grows with *batch size*, not with frequency. Small changes are easier to test, understand and undo.
+#+end_warnblock
+
+** Symptom 3: snowflake servers
+
+- Servers configured *by hand*, over years, by different people
+- Each server is unique, fragile, impossible to rebuild identically
+- "Don't reboot that one, nobody knows how it works"
+- *Configuration drift*: two "identical" servers slowly become different (remember Knight Capital!)
+
+#+BEAMER: \vfill
+#+begin_center
+\large "Pets vs cattle": we name and nurse pets; cattle are numbered and replaceable.
+#+end_center
+
+\footnotesize \rightarrow Answers: orchestration and Infrastructure as Code
+
+** Symptom 4: silos and blame
+
+- Each team optimises its own metric, not the global outcome
+- Communication through tickets and hand-offs: waiting time everywhere
+- Incident \rightarrow "who did it?" \rightarrow people hide mistakes
+- Hidden mistakes \rightarrow no learning \rightarrow the same incident again
+
+#+BEAMER: \vfill
+#+begin_warnblock
+A culture of fear makes systems *less* safe: problems are reported late, or never.
+#+end_warnblock
+
+** The vicious circle
+
+#+begin_export latex
+\begin{center}
+\begin{tikzpicture}[
+  n/.style={draw, rounded corners, fill=opscol!12, text width=3.6cm, align=center, font=\small, minimum height=0.9cm},
+  arr/.style={-Stealth, very thick, opscol!70!black}]
+  \node[n] (a) at (0,2) {Releases are painful and risky};
+  \node[n] (b) at (5,0.5) {So we release less often};
+  \node[n] (c) at (0,-1) {So each release contains more changes};
+  \node[n] (d) at (-5,0.5) {So each release is more likely to fail};
+  \draw[arr] (a.east) to[bend left=20] (b.north);
+  \draw[arr] (b.south) to[bend left=20] (c.east);
+  \draw[arr] (c.west) to[bend left=20] (d.south);
+  \draw[arr] (d.north) to[bend left=20] (a.west);
+\end{tikzpicture}
+\end{center}
+#+end_export
+
+#+begin_center
+DevOps reverses it: *"If it hurts, do it more often"* (and automate it).
+#+end_center
+
+* The birth of DevOps
+
+** A short history
+
+#+begin_export latex
+\begin{center}
+\begin{tikzpicture}[ev/.style={font=\footnotesize, text width=2.5cm, align=center}]
+  \draw[very thick, -Stealth] (0,0) -- (15,0);
+  \foreach \x/\yr in {0.8/2007, 2.8/2008, 4.8/2009, 6.8/2009, 8.8/2013, 10.8/2016, 12.8/2018} {
+    \fill[accent] (\x,0) circle (3pt);
+    \node[font=\small\bfseries] at (\x,-0.4) {\yr};
+  }
+  \node[ev, above] at (0.8,0.3) {P. Debois frustrated by the Dev/Ops split};
+  \node[ev, below] at (2.8,-0.8) {``Agile Infrastructure'' talk, Agile 2008};
+  \node[ev, above] at (4.8,0.3) {Flickr: ``10+ deploys per day''};
+  \node[ev, below] at (6.8,-0.8) {First DevOpsDays (Ghent)};
+  \node[ev, above] at (8.8,0.3) {\emph{The Phoenix Project}};
+  \node[ev, below] at (10.8,-0.8) {\emph{The DevOps Handbook}};
+  \node[ev, above] at (12.8,0.3) {\emph{Accelerate} (DORA research)};
+\end{tikzpicture}
+\end{center}
+#+end_export
+
+- The word "DevOps" comes from the name of the conference: /DevOpsDays/
+- A movement started *by practitioners*, not by a vendor or a standard
+
+** Flickr, 2009: "10+ deploys per day"
+
+J. Allspaw (Ops) and P. Hammond (Dev), O'Reilly Velocity conference
+
+*** Tools
+:PROPERTIES:
+:BEAMER_col: 0.48
+:BEAMER_env: block
+:END:
+
+- Automated infrastructure
+- Shared version control
+- One-step build and deploy
+- Feature flags
+- Shared metrics
+- Chat and bots (IRC)
+
+*** Culture
+:PROPERTIES:
+:BEAMER_col: 0.48
+:BEAMER_env: block
+:END:
+
+- Respect
+- Trust
+- Healthy attitude about failure
+- Avoiding blame
+
+*** Conclusion
+:PROPERTIES:
+:BEAMER_env: ignoreheading
+:END:
+
+#+BEAMER: \vspace{0.3cm}
+#+begin_warnblock
+Dev and Ops share *one goal*: "enable the business". Half of the solution is *culture*.
+#+end_warnblock
+
+* What DevOps is (and is not)
+
+** Defining DevOps
+
+#+begin_quote
+"DevOps is a set of practices intended to reduce the time between committing a change to a system and the change being placed into normal production, while ensuring high quality." \\
+\hfill Bass, Weber, Zhu, /DevOps: A Software Architect's Perspective/, 2015
+#+end_quote
+
+#+BEAMER: \vspace{0.3cm}
+
+*Working definition for this course:*
+
+#+begin_keyblock
+DevOps is a *culture* and a set of *practices* that bring development and operations together, so that software can be delivered *quickly, safely and repeatedly*, with fast *feedback* from production.
+#+end_keyblock
+
+** What DevOps is NOT
+
+- *Not a tool*: installing Jenkins or Kubernetes does not make you "DevOps"
+- *Not a job title*: a "DevOps engineer" alone cannot fix a siloed organisation
+- *Not a new silo*: a "DevOps team" between Dev and Ops = a third wall
+- *Not only automation*: automating a bad process gives a fast bad process
+- *Not "NoOps"*: operations do not disappear, they become shared and automated
+- *Not only for start-ups*: banks, governments, industry do it too
+
+** CALMS: the five pillars
+
+#+ATTR_LATEX: :booktabs t :align lll :font \small
+| *Pillar*     | *Idea*                                  | *Example*                          |
+|--------------+-----------------------------------------+------------------------------------|
+| Culture      | Shared responsibility, trust, no blame  | Dev is on call for its service     |
+| Automation   | Remove manual, repetitive, risky work   | CI/CD pipeline, IaC                |
+| Lean         | Small batches, limit work, flow         | Small pull requests, daily deploys |
+| Measurement  | Decisions based on data                 | DORA metrics, monitoring           |
+| Sharing      | Knowledge, tools and goals are shared   | Shared dashboards, postmortems     |
+
+#+BEAMER: \vfill
+\footnotesize CAMS proposed by J. Willis and D. Edwards (2010); "L" for Lean added by J. Humble.
+
+** The Three Ways (/The DevOps Handbook/)
+
+#+begin_export latex
+\begin{center}
+\begin{tikzpicture}[
+  b/.style={draw, rounded corners, minimum width=2cm, minimum height=0.8cm, font=\small},
+  arr/.style={-Stealth, very thick}]
+  % Way 1
+  \node[font=\small\bfseries, anchor=east] at (0.2,1.3) {1. Flow};
+  \node[b, fill=devcol!20] (d1) at (1.5,1.3) {Dev};
+  \node[b, fill=opscol!20] (o1) at (5.5,1.3) {Ops};
+  \node[b, fill=gray!15] (c1) at (9.5,1.3) {Customer};
+  \draw[arr, devcol] (d1) -- (o1); \draw[arr, devcol] (o1) -- (c1);
+  % Way 2
+  \node[font=\small\bfseries, anchor=east] at (0.2,0) {2. Feedback};
+  \node[b, fill=devcol!20] (d2) at (1.5,0) {Dev};
+  \node[b, fill=opscol!20] (o2) at (5.5,0) {Ops};
+  \node[b, fill=gray!15] (c2) at (9.5,0) {Customer};
+  \draw[arr, opscol] (c2) -- (o2); \draw[arr, opscol] (o2) -- (d2);
+  % Way 3
+  \node[font=\small\bfseries, anchor=east] at (0.2,-1.3) {3. Learning};
+  \node[b, fill=devcol!20] (d3) at (1.5,-1.3) {Dev};
+  \node[b, fill=opscol!20] (o3) at (5.5,-1.3) {Ops};
+  \node[b, fill=gray!15] (c3) at (9.5,-1.3) {Customer};
+  \draw[arr, devcol] (d3) -- (o3); \draw[arr, devcol] (o3) -- (c3);
+  \draw[arr, accent] (o3.south) .. controls (5.5,-2.3) and (1.5,-2.3) .. (d3.south);
+  \draw[arr, accent] (c3.south) .. controls (9.5,-2.3) and (5.5,-2.3) .. (o3.south);
+\end{tikzpicture}
+\end{center}
+#+end_export
+
+1. *Flow*: make work move fast from left to right (small batches, automation)
+2. *Feedback*: detect problems early, from right to left (tests, monitoring)
+3. *Continual learning and experimentation*: take risks, learn from failure, improve
+
+** Blameless postmortems
+
+#+begin_center
+\large "The question is not /who/ caused the failure, but /how/ our system allowed it."
+#+end_center
+
+#+BEAMER: \vspace{0.3cm}
+
+- After each incident, write a postmortem: timeline, impact, causes, actions
+- Assume people acted reasonably with the information they had
+- Fix the *system* (process, tooling, alerts), not the person
+- Share it widely: everybody learns
+
+#+begin_keyblock
+Knight Capital again: "the technician forgot a server" is a *symptom*. The cause is a deployment process that /allowed/ forgetting a server.
+#+end_keyblock
+
+* Measuring DevOps
+
+** Why measure?
+
+- "Without data, you're just another person with an opinion" (W. E. Deming, attributed)
+- Measure *outcomes* (value for users), not *outputs* (lines of code, number of commits)
+- Measure *teams and systems*, never individuals
+
+#+BEAMER: \vfill
+#+begin_warnblock
+Goodhart's law: "When a measure becomes a target, it ceases to be a good measure."
+#+end_warnblock
+
+** The four DORA metrics
+
+#+begin_export latex
+\begin{center}
+\begin{tikzpicture}[
+  m/.style={draw, rounded corners, text width=5.6cm, minimum height=1.5cm, align=left, font=\small}]
+  \node[font=\bfseries, devcol] at (3,2.3) {Throughput (speed)};
+  \node[font=\bfseries, opscol] at (9.4,2.3) {Stability};
+  \node[m, fill=devcol!12] at (3,1) {\textbf{Deployment frequency}\\ How often do we deploy to production?};
+  \node[m, fill=devcol!12] at (3,-0.8) {\textbf{Lead time for changes}\\ Time from commit to running in production};
+  \node[m, fill=opscol!12] at (9.4,1) {\textbf{Change failure rate}\\ \% of deployments causing a failure};
+  \node[m, fill=opscol!12] at (9.4,-0.8) {\textbf{Time to restore service}\\ Time to recover from a failure};
+\end{tikzpicture}
+\end{center}
+#+end_export
+
+\footnotesize DORA = DevOps Research and Assessment (N. Forsgren, J. Humble, G. Kim), /Accelerate/, 2018; yearly /State of DevOps/ reports.
+
+** Speed vs stability: a false trade-off
+
+*** Left
+:PROPERTIES:
+:BEAMER_col: 0.5
+:END:
+
+*Intuition (Ops view):* \\
+going faster means breaking more.
+
+#+BEAMER: \pause
+
+*Data (State of DevOps 2019), elite vs low performers:*
+
+- 208\times more frequent deployments
+- 106\times faster lead time
+- 2604\times faster recovery
+- 7\times lower change failure rate
+
+*** Right
+:PROPERTIES:
+:BEAMER_col: 0.5
+:END:
+
+#+begin_export latex
+\begin{tikzpicture}[scale=0.65]
+  \draw[-Stealth] (0,0) -- (4.5,0) node[below left, font=\scriptsize]{speed};
+  \draw[-Stealth] (0,0) -- (0,4) node[above, font=\scriptsize]{stability};
+  \fill[opscol!70] (0.8,0.9) circle (4pt) node[right, font=\scriptsize]{low};
+  \fill[accent] (1.8,1.9) circle (4pt) node[right, font=\scriptsize]{medium};
+  \fill[devcol!70] (2.7,2.7) circle (4pt) node[right, font=\scriptsize]{high};
+  \fill[green!50!black] (3.7,3.5) circle (4pt) node[left, font=\scriptsize]{elite};
+\end{tikzpicture}
+#+end_export
+
+*** Conclusion
+:PROPERTIES:
+:BEAMER_env: ignoreheading
+:END:
+
+#+begin_keyblock
+The best teams are *both* faster *and* more stable. The practices that create speed (small batches, automation, fast feedback) also create stability.
+#+end_keyblock
+
+* The DevOps lifecycle
+
+** The DevOps infinity loop
+
+#+ATTR_LATEX: :width 0.62\textwidth
+[[file:img/devops-toolchain.pdf]]
+
+#+begin_center
+A *continuous* loop: no "end of project", no hand-off. One team, one flow, constant feedback.
+#+end_center
+
+#+BEAMER: \vfill
+#+BEAMER: \hfill{\tiny Image: Kharnagy, ``Devops-toolchain'', Wikimedia Commons, CC BY-SA 4.0}
+
+** From problems to practices
+
+#+ATTR_LATEX: :booktabs t :align p{5.9cm}p{4.3cm}l :font \small
+| *Problem (WHY)*                       | *Practice*                    | *Tool*             |
+|---------------------------------------+-------------------------------+--------------------|
+| Lost work, no history, "who changed?" | Version control, code review  | Git, GitHub        |
+| Integration hell, late bugs           | Continuous Integration        | GitHub Actions     |
+| Risky, manual release weekends        | Continuous Delivery           | GitHub Actions     |
+| "Works on my machine"                 | Containers                    | Docker             |
+| Scaling, failures, many servers       | Orchestration                 | Kubernetes         |
+| Snowflake servers, drift              | Infrastructure as Code        | Terraform          |
+| "We learn from users' complaints"     | Monitoring, observability     | Prometheus, Grafana |
+
+** Course roadmap
+
+#+ATTR_LATEX: :booktabs t :align ll :font \small
+| *Lecture*                                        | *Lab*                                   |
+|--------------------------------------------------+-----------------------------------------|
+| Why DevOps?                                      | (no lab)                                |
+| Version control: why history matters             | Git internals, branches, conflicts      |
+| Collaboration and quality: reviews, tests        | GitHub flow, pull requests              |
+| Continuous Integration                           | GitHub Actions: build and test          |
+| Continuous Delivery and Deployment               | Release pipeline, artifacts             |
+| Containers                                       | Dockerfile, images, containers          |
+| Multi-container apps, registries, 12-factor      | Docker Compose, push from CI            |
+| Orchestration                                    | Kubernetes: deployments, services       |
+| Infrastructure as Code                           | Terraform                               |
+| Monitoring and observability; wrap-up            | Prometheus and Grafana                  |
+
+** A running example                                              :noexport:
+
+#+begin_center
+One small web application follows us through the whole course.
+#+end_center
+
+#+begin_export latex
+\begin{center}
+\begin{tikzpicture}[
+  s/.style={draw, rounded corners, fill=accent!15, minimum width=1.5cm, minimum height=0.8cm, font=\footnotesize, align=center},
+  arr/.style={-Stealth, thick}]
+  \node[s] (a) at (0.0,0) {versioned\\ \scriptsize Git};
+  \node[s] (b) at (2.02,0) {tested\\ \scriptsize CI};
+  \node[s] (c) at (4.05,0) {released\\ \scriptsize CD};
+  \node[s] (d) at (6.07,0) {packaged\\ \scriptsize Docker};
+  \node[s] (e) at (8.1,0) {orchestrated\\ \scriptsize K8s};
+  \node[s] (f) at (10.12,0) {provisioned\\ \scriptsize Terraform};
+  \node[s] (g) at (12.14,0) {observed\\ \scriptsize Prometheus};
+  \foreach \u/\v in {a/b,b/c,c/d,d/e,e/f,f/g} \draw[arr] (\u) -- (\v);
+\end{tikzpicture}
+\end{center}
+#+end_export
+
+- Each lab adds one layer, so at the end you have a *complete delivery pipeline*
+- Each layer starts from a problem you will /feel/ before you solve it
+
+** Organisation
+
+*** Practical
+:PROPERTIES:
+:BEAMER_col: 0.5
+:BEAMER_env: block
+:END:
+
+- 10 lectures (1h30) + 9 labs (1h30)
+- Labs *in pairs*, same pair all semester
+- One shared GitHub repository per pair
+- Assessment: to be announced
+
+*** Before next session
+:PROPERTIES:
+:BEAMER_col: 0.5
+:BEAMER_env: block
+:END:
+
+- Create a GitHub account
+- Check =git --version= on your machine
+- Choose your lab partner
+- Read: the Flickr talk slides (2009)
+
+** Key takeaways
+
+1. Dev and Ops had *opposed goals*: change vs stability \rightarrow a wall of confusion
+2. Big, rare, manual releases are *more* risky, not less
+3. DevOps is a *culture* + *practices* + *tools*, in that order
+4. CALMS and the Three Ways: flow, feedback, learning
+5. Speed and stability *go together* (DORA)
+6. Every tool in this course answers a *problem*: always ask "why?"
+
+** Further reading
+
+- G. Kim, K. Behr, G. Spafford, /The Phoenix Project/, IT Revolution, 2013 (novel)
+- G. Kim, J. Humble, P. Debois, J. Willis, /The DevOps Handbook/, IT Revolution, 2016 (2nd ed. 2021)
+- N. Forsgren, J. Humble, G. Kim, /Accelerate/, IT Revolution, 2018
+- J. Humble, D. Farley, /Continuous Delivery/, Addison-Wesley, 2010
+- B. Beyer et al., /Site Reliability Engineering/, O'Reilly, 2016 (free online)
+- J. Allspaw, P. Hammond, "10+ Deploys Per Day", Velocity 2009 (slides online)
+- DORA, /State of DevOps Reports/, https://dora.dev
+
+** Next session
+
+#+begin_center
+\Large *Version control*
+
+\large Why do we need history, branches and merges? \\
+What does Git actually store?
+#+end_center
+
+#+BEAMER: \vfill
+#+begin_center
+Questions?
+#+end_center
