@@ -1,0 +1,25 @@
+# -*- mode: org -*-
+# Shared Beamer setup for all DevOps lecture slides.
+# Include in each slides.org with:  #+SETUPFILE: ../common/slides.setup
+
+#+LATEX_CLASS: beamer
+#+LATEX_CLASS_OPTIONS: [aspectratio=169,11pt]
+#+BEAMER_THEME: metropolis[progressbar=frametitle,block=fill]
+#+OPTIONS: H:2 toc:nil num:t ':t
+#+AUTHOR: Mohammed Said Belaid
+#+DATE: Eng 5 SECI, DevOps
+
+#+LATEX_HEADER: \usepackage{booktabs}
+#+LATEX_HEADER: \usepackage{tikz}
+#+LATEX_HEADER: \usetikzlibrary{arrows.meta,positioning,shapes,calc,decorations.pathreplacing}
+#+LATEX_HEADER: \usepackage{listings}
+#+LATEX_HEADER: \lstset{basicstyle=\ttfamily\small,columns=fullflexible,breaklines=true}
+#+LATEX_HEADER: \definecolor{devcol}{HTML}{1F77B4}
+#+LATEX_HEADER: \definecolor{opscol}{HTML}{D62728}
+#+LATEX_HEADER: \definecolor{accent}{HTML}{EB811B}
+#+LATEX_HEADER: \setbeamertemplate{frame footer}{DevOps, Eng 5 SECI}
+#+LATEX_HEADER: \usepackage[most]{tcolorbox}
+#+LATEX_HEADER: \newtcolorbox{keyblock}{enhanced,colback=accent!10,colframe=accent,boxrule=0pt,leftrule=3pt,arc=0pt,outer arc=0pt,left=6pt,top=3pt,bottom=3pt}
+#+LATEX_HEADER: \newtcolorbox{warnblock}{enhanced,colback=opscol!8,colframe=opscol,boxrule=0pt,leftrule=3pt,arc=0pt,outer arc=0pt,left=6pt,top=3pt,bottom=3pt}
+# Institution header at the top of the title slide
+#+LATEX_HEADER: \titlegraphic{\begin{minipage}{\textwidth}\centering\small\textbf{University of Science and Technology of Oran Mohamed Boudiaf}\\ Faculty of Mathematics and Informatics\\ Department of Computer Science\end{minipage}}

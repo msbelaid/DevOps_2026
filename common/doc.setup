@@ -1,0 +1,29 @@
+# -*- mode: org -*-
+# Shared article setup for teacher notes and lab handouts.
+# Include with:  #+SETUPFILE: ../common/doc.setup
+
+#+LATEX_CLASS: article
+#+LATEX_CLASS_OPTIONS: [11pt,a4paper]
+#+OPTIONS: toc:nil num:t ':t
+#+AUTHOR: Mohammed Said Belaid
+
+#+LATEX_HEADER: \usepackage[margin=2.2cm]{geometry}
+#+LATEX_HEADER: \usepackage{lmodern}
+#+LATEX_HEADER: \usepackage{booktabs}
+#+LATEX_HEADER: \usepackage{enumitem}
+#+LATEX_HEADER: \setlist{itemsep=2pt,topsep=4pt}
+#+LATEX_HEADER: \usepackage[most]{tcolorbox}
+#+LATEX_HEADER: \usepackage{listings}
+#+LATEX_HEADER: \usepackage{fancyhdr}
+#+LATEX_HEADER: \pagestyle{fancy}\fancyhf{}\lhead{DevOps, Eng 5 SECI}\rhead{\leftmark}\cfoot{\thepage}
+#+LATEX_HEADER: \setlength{\parindent}{0pt}\setlength{\parskip}{4pt}
+#+LATEX_HEADER: \hypersetup{colorlinks=true,linkcolor=blue!50!black,urlcolor=blue!60!black}
+#+LATEX_HEADER: \lstset{basicstyle=\ttfamily\small,columns=fullflexible,breaklines=true,frame=single,backgroundcolor=\color{gray!8},rulecolor=\color{gray!40},xleftmargin=4pt,xrightmargin=4pt,showstringspaces=false,upquote=true}
+#+LATEX_HEADER: \lstdefinelanguage{yaml}{sensitive=false,morecomment=[l]{\#},morestring=[b]"}
+# Speech blocks for the teacher notes:  #+begin_en ... #+end_en / #+begin_fr ... #+end_fr
+#+LATEX_HEADER: \newtcolorbox{en}{colback=blue!3,colframe=blue!45!black,boxrule=0.5pt,left=4pt,right=4pt,top=9pt,bottom=3pt,title={\textbf{EN}},fonttitle=\small,attach boxed title to top left={yshift=-2mm,xshift=3mm},boxed title style={size=small,colback=blue!45!black},enhanced,breakable}
+#+LATEX_HEADER: \newtcolorbox{fr}{colback=red!2,colframe=red!50!black,boxrule=0.5pt,left=4pt,right=4pt,top=9pt,bottom=3pt,title={\textbf{FR}},fonttitle=\small,attach boxed title to top left={yshift=-2mm,xshift=3mm},boxed title style={size=small,colback=red!50!black},enhanced,breakable}
+# Generic boxes: #+begin_tip, #+begin_question, #+begin_why
+#+LATEX_HEADER: \newtcolorbox{tip}{colback=green!4,colframe=green!40!black,boxrule=0.5pt,title={Tip},fonttitle=\small\bfseries,breakable}
+#+LATEX_HEADER: \newtcolorbox{question}{colback=orange!5,colframe=orange!70!black,boxrule=0.5pt,title={Question},fonttitle=\small\bfseries,breakable}
+#+LATEX_HEADER: \newtcolorbox{why}{colback=violet!4,colframe=violet!60!black,boxrule=0.5pt,title={Why does it matter?},fonttitle=\small\bfseries,breakable}
