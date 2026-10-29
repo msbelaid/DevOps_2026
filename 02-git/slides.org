@@ -1,0 +1,743 @@
+#+TITLE: Version control
+#+SUBTITLE: Why history matters, and how to use Git every day
+#+SETUPFILE: ../common/slides.setup
+
+* Opening
+
+** Today's agenda
+
+1. Why should we care?
+2. Life without version control
+3. A short history: each generation fixes the previous one
+4. Everyday Git
+5. Branches and merges
+6. Working as a team
+7. Wrap-up
+
+#+BEAMER: \vfill
+#+begin_keyblock
+Today's question: */why/* is a reliable, shared history the foundation of everything else in DevOps?
+#+end_keyblock
+
+** Sound familiar?
+
+#+begin_export latex
+\begin{center}
+\begin{tikzpicture}[f/.style={draw, fill=gray!8, minimum width=7.2cm, minimum height=0.55cm, anchor=west, font=\ttfamily\small}]
+  \node[f] at (0,2.4) {rapport.docx};
+  \node[f] at (0,1.8) {rapport\_v2.docx};
+  \node[f] at (0,1.2) {rapport\_final.docx};
+  \node[f] at (0,0.6) {rapport\_final\_v2.docx};
+  \node[f, fill=opscol!12] at (0,0.0) {rapport\_final\_v2\_VRAIMENT\_final.docx};
+  \node[f] at (0,-0.6) {projet\_backup\_12oct.zip};
+\end{tikzpicture}
+\end{center}
+#+end_export
+
+#+BEAMER: \pause
+
+- Which one is the latest? Which one did you send to the teacher?
+- What changed between =v2= and =final=? Who changed it? Why?
+- Your partner edited =rapport_final.docx= at the same time as you...
+
+** Production is broken
+
+#+begin_center
+\Large "But it worked last week!"
+#+end_center
+
+#+BEAMER: \vspace{0.3cm}
+
+1. *What* changed since last week?
+2. *Who* changed it?
+3. *Why* was it changed?
+4. Can we go back to last week's version, *now*, safely?
+
+#+BEAMER: \pause
+#+BEAMER: \vfill
+#+begin_warnblock
+Without a reliable history, none of these questions has an answer, and lecture 1's *flow* (small, frequent changes) and *feedback* (find what broke, fast) are impossible.
+#+end_warnblock
+
+* Life without version control
+
+** Five pains
+
+#+ATTR_LATEX: :booktabs t :align p{5.2cm}p{7.6cm} :font \small
+| *Pain*                      | *Consequence*                                           |
+|-----------------------------+---------------------------------------------------------|
+| Lost work                   | A disk crash, a bad copy-paste: days of work are gone   |
+| Overwriting each other      | Last one to save wins; the other's work silently vanishes |
+| No "why"                    | The code says /what/, never /why/ it became like this   |
+| No way back                 | A bad change in production; nobody knows the last good state |
+| No parallel work            | "Don't touch the project, I'm working on it"            |
+
+#+BEAMER: \vfill
+#+begin_center
+Each pain becomes a *requirement* for a tool.
+#+end_center
+
+** What we need from a tool
+
+#+begin_export latex
+\begin{center}
+\begin{tikzpicture}[
+  r/.style={draw, rounded corners, fill=accent!15, text width=2.1cm, minimum height=1.3cm, align=center, font=\small}]
+  \node[r] at (0,0) {\textbf{History}\\ \scriptsize every version, forever};
+  \node[r] at (2.6,0) {\textbf{Attribution}\\ \scriptsize who, when, and \emph{why}};
+  \node[r] at (5.2,0) {\textbf{Rollback}\\ \scriptsize return to any good state};
+  \node[r] at (7.8,0) {\textbf{Parallel work}\\ \scriptsize isolated lines of work};
+  \node[r] at (10.4,0) {\textbf{Integration}\\ \scriptsize combine work safely};
+\end{tikzpicture}
+\end{center}
+#+end_export
+
+#+BEAMER: \vspace{0.4cm}
+
+#+begin_keyblock
+A *version control system* (VCS) is a *time machine* (history, attribution, rollback) plus a *collaboration protocol* (parallel work, integration).
+#+end_keyblock
+
+** Version control in DevOps: everything as code
+
+#+begin_export latex
+\begin{center}
+\begin{tikzpicture}[
+  s/.style={draw, rounded corners, fill=devcol!12, minimum width=2.2cm, minimum height=0.5cm, font=\small},
+  c/.style={draw, rounded corners, fill=opscol!12, minimum width=2.2cm, minimum height=0.5cm, font=\small},
+  arr/.style={-Stealth, thick}]
+  \node[draw, very thick, rounded corners, fill=accent!25, minimum width=2.6cm, minimum height=1.2cm, align=center] (git) at (0,0) {\textbf{Git repository}\\ \scriptsize single source of truth};
+  \node[s] (p) at (-5,1.2) {Pipeline config};
+  \node[s] (a) at (-5,0.6) {App code};
+  \node[s] (b) at (-5,0) {Tests};
+  \node[s] (d) at (-5,-0.6) {Dockerfile};
+  \node[s] (e) at (-5,-1.2) {Terraform files};
+  \foreach \n in {a,b,d,e,p} \draw[arr] (\n.east) -- (git.west);
+  \node[c] (ci) at (5,0.8) {CI: build, test};
+  \node[c] (cd) at (5,0) {CD: deploy};
+  \node[c] (inf) at (5,-0.8) {Infrastructure};
+  \foreach \n in {ci,cd,inf} \draw[arr] (git.east) -- (\n.west);
+\end{tikzpicture}
+\end{center}
+#+end_export
+
+Everything that builds, tests, deploys or runs the system lives in version control: every later session *starts from a commit*.
+
+#+begin_keyblock
+DORA (/Accelerate/, 2018): "use version control for /all/ production artifacts" is one of the capabilities that predict delivery performance.
+#+end_keyblock
+
+** What should (not) be in version control?
+
+#+begin_center
+\large Think for a minute: what goes in, what stays out?
+#+end_center
+
+#+BEAMER: \pause
+
+*** In
+:PROPERTIES:
+:BEAMER_col: 0.48
+:BEAMER_env: block
+:END:
+
+- Source code and tests
+- Build and pipeline configuration
+- Infrastructure definitions, scripts
+- Documentation
+
+*** Out
+:PROPERTIES:
+:BEAMER_col: 0.48
+:BEAMER_env: alertblock
+:END:
+
+- *Secrets*: passwords, API keys
+- Build outputs (=.class=, =.o=, binaries)
+- Downloaded dependencies (=node_modules/=)
+- Personal IDE settings
+
+*** Conclusion
+:PROPERTIES:
+:BEAMER_env: ignoreheading
+:END:
+
+#+begin_center
+Rule: version what you /cannot regenerate/. And a secret pushed once stays in the history *forever*. (\rightarrow =.gitignore=)
+#+end_center
+
+* A short history
+
+** Generation 1: local version control
+
+#+begin_export latex
+\begin{center}
+\begin{tikzpicture}[v/.style={draw, fill=devcol!15, minimum width=1.6cm, minimum height=0.5cm, font=\small}]
+  \node[draw, rounded corners, minimum width=6.5cm, minimum height=2.6cm, label={[font=\small\bfseries]above:One computer}] at (0,0) {};
+  \node[draw, fill=gray!10, minimum width=1.8cm, minimum height=1.6cm, align=center, font=\small] (w) at (-1.8,0) {Working\\ file};
+  \node[v] (v3) at (1.6,0.6) {version 3};
+  \node[v] (v2) at (1.6,0) {version 2};
+  \node[v] (v1) at (1.6,-0.6) {version 1};
+  \draw[{Stealth}-{Stealth}, thick] (w.east) -- (0.75,0);
+\end{tikzpicture}
+\end{center}
+#+end_export
+
+- RCS (1982): keeps the versions of each file on *your* machine
+- Solves: history, rollback, but only for *one person*
+
+#+begin_warnblock
+New problem: how do *several people* share their work?
+#+end_warnblock
+
+** Generation 2: centralised version control
+
+*** Left
+:PROPERTIES:
+:BEAMER_col: 0.45
+:END:
+
+#+begin_export latex
+\begin{tikzpicture}[
+  c/.style={draw, rounded corners, fill=devcol!15, minimum width=1.5cm, minimum height=0.6cm, font=\small}]
+  \node[draw, rounded corners, fill=opscol!15, minimum width=2.4cm, minimum height=1.1cm, align=center, font=\small] (s) at (0,2) {\textbf{Server}\\ full history};
+  \node[c] (a) at (-2,0) {Alice};
+  \node[c] (b) at (0,0) {Bob};
+  \node[c] (d) at (2,0) {Dina};
+  \foreach \n in {a,b,d} \draw[{Stealth}-{Stealth}, thick] (\n.north) -- (s.south);
+  \node[font=\scriptsize, align=center] at (0,-0.75) {each client: \emph{one} version only};
+\end{tikzpicture}
+#+end_export
+
+*** Right
+:PROPERTIES:
+:BEAMER_col: 0.55
+:END:
+
+- CVS (1990), Subversion/SVN (2000)
+- Solves: *team* work, one shared history
+- New problems:
+  - server down \rightarrow nobody can commit
+  - network needed for every operation (log, diff, commit)
+  - branches = *copies* of the whole tree: slow, rarely used
+  - often: *lock* a file before editing it
+
+*** Conclusion
+:PROPERTIES:
+:BEAMER_env: ignoreheading
+:END:
+
+#+begin_warnblock
+A single point of failure, and branching so costly that people avoid it.
+#+end_warnblock
+
+** Generation 3: distributed, the birth of Git (2005)
+
+- 2002-2005: the Linux kernel uses *BitKeeper*, a proprietary distributed VCS, under a free licence
+- April 2005: the licence is withdrawn after a dispute
+- Linus Torvalds writes his own tool: Git manages its own source code within days; Linux 2.6.12 is released with it in June
+
+#+BEAMER: \pause
+
+*Design goals:*
+- *Speed*: almost every operation is local
+- *Fully distributed*: no mandatory central server
+- *Non-linear development*: thousands of parallel branches
+- *Integrity*: corruption or tampering must be detected
+- Scale to a huge project (the kernel: thousands of contributors)
+
+** Centralised vs distributed
+
+#+begin_export latex
+\begin{center}
+\begin{tikzpicture}[
+  c/.style={draw, rounded corners, fill=devcol!15, minimum width=1.4cm, minimum height=0.6cm, font=\small},
+  h/.style={draw, rounded corners, fill=accent!25, minimum width=1.4cm, minimum height=0.6cm, font=\small, align=center}]
+  % centralised
+  \node[font=\bfseries] at (-4,2.6) {Centralised};
+  \node[h, fill=opscol!15] (s) at (-4,1.6) {Server\\ \scriptsize history};
+  \node[c] (a) at (-5.6,0) {copy};
+  \node[c] (b) at (-4,0) {copy};
+  \node[c] (d) at (-2.4,0) {copy};
+  \foreach \n in {a,b,d} \draw[{Stealth}-{Stealth}, thick] (\n) -- (s);
+  % distributed
+  \node[font=\bfseries] at (4,2.6) {Distributed};
+  \node[h] (g) at (4,1.6) {GitHub\\ \scriptsize history};
+  \node[h] (x) at (2.2,0) {Alice\\ \scriptsize history};
+  \node[h] (y) at (4,0) {Bob\\ \scriptsize history};
+  \node[h] (z) at (5.8,0) {Dina\\ \scriptsize history};
+  \foreach \n in {x,y,z} \draw[{Stealth}-{Stealth}, thick] (\n) -- (g);
+  \draw[{Stealth}-{Stealth}, thick, dashed] (x) -- (y);
+\end{tikzpicture}
+\end{center}
+#+end_export
+
+- Every clone is a *full repository*: complete history, works offline, is a backup
+- Commit, log, diff, branch: *local and instant*; share only when ready (=push=, =pull=)
+- "The central repository" (GitHub) is a team *convention*, not a technical need
+
+* Everyday Git
+
+** The three areas: why a staging area?
+
+#+begin_export latex
+\begin{center}
+\begin{tikzpicture}[
+  a/.style={draw, rounded corners, minimum width=3cm, minimum height=1.1cm, align=center, font=\small},
+  arr/.style={-Stealth, very thick}]
+  \node[a, fill=gray!12] (w) at (0,0) {\textbf{Working directory}\\ \scriptsize files you edit};
+  \node[a, fill=accent!20] (i) at (5,0) {\textbf{Staging area}\\ \scriptsize (index) the next commit};
+  \node[a, fill=devcol!15] (r) at (10,0) {\textbf{Repository}\\ \scriptsize \texttt{.git}, the history};
+  \draw[arr] (w) -- node[above, font=\small\ttfamily]{git add} (i);
+  \draw[arr] (i) -- node[above, font=\small\ttfamily]{git commit} (r);
+  \draw[arr, devcol] (r.south) .. controls (10,-1.5) and (0,-1.5) .. node[below, font=\small\ttfamily]{git switch / restore} (w.south);
+\end{tikzpicture}
+\end{center}
+#+end_export
+
+- You changed 5 files: a bug fix, a new feature, and a debug =print=
+- The staging area lets you *choose* what goes into the next commit
+- \rightarrow one commit = *one logical change*, not "everything I did today"
+
+#+begin_keyblock
+Why it matters: a commit that does one thing can be reviewed, understood, and *undone* on its own.
+#+end_keyblock
+
+** The daily loop
+
+#+BEAMER: \small
+#+begin_example
+$ git status              # what changed? what is staged?
+$ git diff                # my changes, line by line
+$ git add cart.py         # choose what goes into the next commit
+$ git diff --staged       # review what I am about to commit
+$ git commit -m "Fix crash when the cart is empty"
+$ git log --oneline       # check the result
+a158e2f Fix crash when the cart is empty
+c337f7a Add checkout page
+#+end_example
+#+BEAMER: \normalsize
+
+- =git status= is your compass: run it before and after every command, and *read* it (it often tells you the next command)
+- Commit when one logical change is done: several times a day, not once a week
+
+#+begin_keyblock
+=git diff --staged= before each commit is your own first code review.
+#+end_keyblock
+
+** Reading the history
+
+#+BEAMER: \small
+#+begin_example
+$ git log --oneline --graph --all     # the whole picture
+$ git show a158e2f                    # one commit: author, message, diff
+$ git log -p -- cart.py               # every change ever made to one file
+$ git diff main feature               # what differs between two branches
+$ git blame cart.py                   # who last changed each line
+#+end_example
+#+BEAMER: \normalsize
+
+- Each commit has a unique *ID* (=a158e2f=), identical on every clone
+- It names an *exact version* of the whole project: "=a158e2f= passed the tests", "=a158e2f= runs in production". This is how CI and CD will talk (remember Knight Capital)
+
+#+begin_keyblock
+History is only useful if you can *read* it: small commits and good messages make these commands answer real questions.
+#+end_keyblock
+
+** Undoing things
+
+#+ATTR_LATEX: :booktabs t :align lll :font \footnotesize
+| *Situation*                          | *Command*                | *After a push?*        |
+|--------------------------------------+--------------------------+------------------------|
+| I broke a file, I want it back       | =git restore f=          | n/a (edits are lost!)  |
+| I staged a file by mistake           | =git restore --staged f= | n/a                    |
+| Fix the last commit (message, file)  | =git commit --amend=     | *no*: rewrites it      |
+| Undo my last local commit            | =git reset HEAD~1=       | *no*: rewrites history |
+| A shared commit broke production     | =git revert <id>=        | *yes*: adds a commit   |
+
+#+BEAMER: \vfill
+#+begin_warnblock
+Rule: before =push=, you may rewrite /your/ history; after =push=, only *add* to it (=revert=). Safety net: =git reflog=.
+#+end_warnblock
+
+** Working with a remote
+
+#+begin_export latex
+\begin{center}
+\begin{tikzpicture}[
+  r/.style={draw, rounded corners, minimum width=3.4cm, minimum height=0.9cm, align=center, font=\small},
+  arr/.style={-Stealth, very thick}]
+  \node[r, fill=devcol!15] (l) at (0,0) {\textbf{Your laptop}\\ \scriptsize full repository};
+  \node[r, fill=accent!25] (g) at (8,0) {\textbf{GitHub} (\texttt{origin})\\ \scriptsize the team's meeting point};
+  \draw[arr] ([yshift=3mm]l.east) -- node[above, font=\small\ttfamily]{git push} ([yshift=3mm]g.west);
+  \draw[arr] ([yshift=-3mm]g.west) -- node[below, font=\small\ttfamily]{git pull {\normalfont\scriptsize(fetch + merge)}} ([yshift=-3mm]l.east);
+  \draw[arr, dashed] (g.north) .. controls (6,1.3) and (2,1.3) .. node[above, font=\small\ttfamily]{git clone {\normalfont\scriptsize(once)}} (l.north);
+\end{tikzpicture}
+\end{center}
+#+end_export
+
+- =pull=: get the others' commits, before you start and before you push
+- =push=: publish your commits; *rejected* if GitHub has commits you lack
+- =origin/main=: your laptop's last view of GitHub's =main=
+
+#+begin_keyblock
+Daily rhythm: =pull= \rightarrow branch \rightarrow small commits \rightarrow =pull= \rightarrow =push=. Never =push --force= on a shared branch.
+#+end_keyblock
+
+** Keeping the repository clean: =.gitignore=
+
+*** Left
+:PROPERTIES:
+:BEAMER_col: 0.42
+:END:
+
+#+BEAMER: \small
+#+begin_example
+# .gitignore
+.env
+*.log
+build/
+__pycache__/
+node_modules/
+.vscode/
+#+end_example
+#+BEAMER: \normalsize
+
+*** Right
+:PROPERTIES:
+:BEAMER_col: 0.58
+:END:
+
+- One pattern per line; commit the =.gitignore= itself, so the whole team shares it
+- =git status= stays readable: only what matters shows up
+- Ready-made templates per language: =github.com/github/gitignore=
+- Committed by mistake? =git rm --cached .env= stops tracking it (the file stays on disk)
+
+*** Conclusion
+:PROPERTIES:
+:BEAMER_env: ignoreheading
+:END:
+
+#+begin_warnblock
+=.gitignore= does not erase a secret already committed: it stays in the history. Once pushed, *change the password*.
+#+end_warnblock
+
+* Branches and merges
+
+** Why branches?
+
+#+begin_center
+\large You are half-way through a new feature. \\
+An urgent bug is reported in production. What do you do?
+#+end_center
+
+#+BEAMER: \pause
+
+- Commit the half-done feature? \rightarrow you ship broken code
+- Copy the project folder? \rightarrow two diverging copies, merged by hand
+- Throw your work away? \rightarrow no
+
+#+BEAMER: \pause
+#+begin_keyblock
+A *branch* is an isolated line of work: a feature, a fix, an experiment. It does not disturb =main= or your colleagues.
+#+end_keyblock
+
+** A branch is just a pointer
+
+#+begin_export latex
+\begin{center}
+\begin{tikzpicture}[
+  c/.style={draw, circle, fill=accent!30, minimum size=0.8cm, font=\small},
+  p/.style={draw, rounded corners, fill=devcol!15, font=\scriptsize\ttfamily, inner sep=2pt},
+  h/.style={draw, rounded corners, fill=opscol!15, font=\scriptsize\ttfamily, inner sep=2pt},
+  arr/.style={-Stealth, thick}]
+  % before
+  \node[font=\small\bfseries] at (2,1.6) {\texttt{git branch feature}};
+  \node[c] (a1) at (0,0) {C1}; \node[c] (a2) at (1.5,0) {C2}; \node[c] (a3) at (3,0) {C3};
+  \draw[arr] (a2) -- (a1); \draw[arr] (a3) -- (a2);
+  \node[p] (m) at (3,0.9) {main}; \draw[arr] (m) -- (a3);
+  \node[p] (f) at (3,-0.9) {feature}; \draw[arr] (f) -- (a3);
+  \node[h] (hd) at (4.5,0.9) {HEAD}; \draw[arr] (hd) -- (m);
+  % after
+  \node[font=\small\bfseries] at (9.5,1.6) {\texttt{git switch feature}; commit};
+  \node[c] (b1) at (7,0) {C1}; \node[c] (b2) at (8.5,0) {C2}; \node[c] (b3) at (10,0) {C3};
+  \node[c] (b4) at (11.5,-0.6) {C4};
+  \draw[arr] (b2) -- (b1); \draw[arr] (b3) -- (b2); \draw[arr] (b4) -- (b3);
+  \node[p] (m2) at (10,0.9) {main}; \draw[arr] (m2) -- (b3);
+  \node[p] (f2) at (11.5,-1.4) {feature}; \draw[arr] (f2) -- (b4);
+  \node[h] (hd2) at (13,-1.4) {HEAD}; \draw[arr] (hd2) -- (f2);
+\end{tikzpicture}
+\end{center}
+#+end_export
+
+- A branch = a *name* pointing to one commit. It moves forward at each commit
+- =HEAD= = "where am I?": the branch you are currently on
+- Nothing is copied: creating a branch is instant \rightarrow branch for *every* task
+
+** Fast-forward merge
+
+#+begin_export latex
+\begin{center}
+\begin{tikzpicture}[
+  c/.style={draw, circle, fill=accent!30, minimum size=0.8cm, font=\small},
+  p/.style={draw, rounded corners, fill=devcol!15, font=\scriptsize\ttfamily, inner sep=2pt},
+  arr/.style={-Stealth, thick}]
+  \node[c] (c1) at (0,0) {C1}; \node[c] (c2) at (1.6,0) {C2}; \node[c] (c3) at (3.2,0) {C3}; \node[c] (c4) at (4.8,0) {C4};
+  \draw[arr] (c2) -- (c1); \draw[arr] (c3) -- (c2); \draw[arr] (c4) -- (c3);
+  \node[p, draw=gray, text=gray] (m) at (1.6,1.1) {main};
+  \draw[arr, dashed, gray] (m) -- (c2);
+  \node[p] (f) at (4.8,-1.1) {feature}; \draw[arr] (f) -- (c4);
+  \node[p, fill=green!15] (m2) at (4.8,1.1) {main}; \draw[arr, green!50!black] (m2) -- (c4);
+  \draw[-Stealth, very thick, green!50!black] (m.east) -- node[above, font=\scriptsize, text=green!40!black]{\texttt{git merge feature}} (m2.west);
+\end{tikzpicture}
+\end{center}
+#+end_export
+
+- =main= has not moved since =feature= was created: no divergence
+- Git simply *moves the pointer* forward. No new commit, nothing to combine
+
+** Three-way merge
+
+#+begin_export latex
+\begin{center}
+\begin{tikzpicture}[scale=0.8,
+  c/.style={draw, circle, fill=accent!30, minimum size=0.65cm, font=\scriptsize},
+  p/.style={draw, rounded corners, fill=devcol!15, font=\scriptsize\ttfamily, inner sep=2pt},
+  arr/.style={-Stealth, thick}]
+  \node[c] (c1) at (0,0) {C1};
+  \node[c, fill=yellow!40] (c2) at (1.6,0) {C2};
+  \node[c] (m1) at (3.2,0.9) {C3}; \node[c] (m2) at (4.8,0.9) {C4};
+  \node[c] (f1) at (3.2,-0.9) {C5}; \node[c] (f2) at (4.8,-0.9) {C6};
+  \node[c, fill=green!25] (mg) at (6.6,0) {M};
+  \draw[arr] (c2) -- (c1); \draw[arr] (m1) -- (c2); \draw[arr] (m2) -- (m1);
+  \draw[arr] (f1) -- (c2); \draw[arr] (f2) -- (f1);
+  \draw[arr] (mg) -- (m2); \draw[arr] (mg) -- (f2);
+  \node[p] at (6.6,1.0) {main};
+  \node[p] at (4.8,-1.8) {feature};
+  \node[font=\scriptsize] at (1.6,-0.8) {merge base};
+  \node[font=\scriptsize, align=left, anchor=west] at (7.5,0) {merge commit:\\ \emph{two} parents};
+\end{tikzpicture}
+\end{center}
+#+end_export
+
+Git compares the two tips *and their common ancestor*, which tells /who/ changed what:
+
+#+ATTR_LATEX: :booktabs t :align llll :font \footnotesize
+| *Base* | *main* | *feature* | *Result*                     |
+|--------+--------+-----------+------------------------------|
+| A      | A      | B         | B (only feature changed it)  |
+| A      | B      | A         | B (only main changed it)     |
+| A      | B      | C         | *conflict*: both changed it  |
+
+** Conflicts are a feature, not a bug
+
+#+BEAMER: \small
+#+begin_example
+<<<<<<< HEAD
+TAX_RATE = 0.19
+=======
+TAX_RATE = 0.09
+>>>>>>> feature
+#+end_example
+#+BEAMER: \normalsize
+
+- Two people changed the *same lines* in different ways since the merge base
+- Git *refuses to guess*: which value is right is a business decision, not a text operation
+
+#+begin_warnblock
+A tool that "always takes the most recent version" would silently ship a wrong tax rate. A conflict is a *conversation* between two developers, and the longer you wait to merge, the bigger it gets.
+#+end_warnblock
+
+** Merge or rebase?
+
+#+begin_export latex
+\begin{center}
+\begin{tikzpicture}[scale=0.85,
+  c/.style={draw, circle, fill=accent!30, minimum size=0.6cm, font=\scriptsize},
+  n/.style={draw, circle, fill=devcol!25, minimum size=0.6cm, font=\scriptsize},
+  arr/.style={-Stealth, thick}]
+  \node[font=\small\bfseries] at (2,1.2) {merge};
+  \node[c] (a) at (0,0) {A}; \node[c] (b) at (1.2,0.6) {B};
+  \node[c] (x) at (1.2,-0.6) {X}; \node[c] (y) at (2.4,-0.6) {Y};
+  \node[c, fill=green!25] (m) at (3.6,0) {M};
+  \draw[arr] (b) -- (a); \draw[arr] (x) -- (a); \draw[arr] (y) -- (x);
+  \draw[arr] (m) -- (b); \draw[arr] (m) -- (y);
+  \node[font=\small\bfseries] at (9,1.2) {rebase};
+  \node[c] (a2) at (6.5,0) {A}; \node[c] (b2) at (7.7,0) {B};
+  \node[n] (x2) at (8.9,0) {X'}; \node[n] (y2) at (10.1,0) {Y'};
+  \draw[arr] (b2) -- (a2); \draw[arr] (x2) -- (b2); \draw[arr] (y2) -- (x2);
+  \node[font=\scriptsize, devcol] at (9.5,-0.7) {new commits, new IDs};
+\end{tikzpicture}
+\end{center}
+#+end_export
+
+#+ATTR_LATEX: :booktabs t :align lp{5cm}p{5.4cm} :font \footnotesize
+|           | *merge*                              | *rebase*                                    |
+|-----------+--------------------------------------+---------------------------------------------|
+| History   | true: shows what really happened     | rewritten: linear, easier to read           |
+| Commits   | kept as they are                     | *copied* on top of the target: new IDs      |
+
+#+begin_warnblock
+Golden rule: *never rebase commits that others already have*. (Why? Rebased commits are /new/ commits: your colleagues' copies no longer match.)
+#+end_warnblock
+
+* Working as a team
+
+** Integration hell
+
+*** Left
+:PROPERTIES:
+:BEAMER_col: 0.55
+:END:
+
+- Two developers on *long-lived* branches for 3 weeks
+- Every day, the branches diverge more
+- Merge day: dozens of conflicts, broken tests, nobody remembers the reasons
+- Sounds familiar? Lecture 1: *big, rare releases*, the vicious circle
+
+*** Right
+:PROPERTIES:
+:BEAMER_col: 0.45
+:END:
+
+#+begin_export latex
+\begin{tikzpicture}[scale=0.8]
+  \draw[-Stealth] (0,0) -- (4.5,0) node[below left, font=\scriptsize]{time since last integration};
+  \draw[-Stealth] (0,0) -- (0,3.5) node[above, font=\scriptsize]{cost of merging};
+  \draw[very thick, opscol] (0.2,0.1) .. controls (2.5,0.3) and (3.5,1.3) .. (4.2,3.3);
+  \fill[devcol] (0.5,0.12) circle (2pt) node[above, font=\scriptsize, devcol]{daily};
+  \fill[opscol] (3.9,2.6) circle (2pt) node[left, font=\scriptsize, opscol]{3 weeks};
+\end{tikzpicture}
+#+end_export
+
+*** Conclusion
+:PROPERTIES:
+:BEAMER_env: ignoreheading
+:END:
+
+#+BEAMER: \vspace{0.3cm}
+#+begin_keyblock
+Same lesson as lecture 1, at the scale of code: *integrate small and often*. If it hurts, do it more often.
+#+end_keyblock
+
+** Branching strategies
+
+#+ATTR_LATEX: :booktabs t :align p{2.6cm}p{5.6cm}p{4.4cm} :font \footnotesize
+| *Strategy*          | *Idea*                                                               | *Fits*                                   |
+|---------------------+----------------------------------------------------------------------+------------------------------------------|
+| Git Flow (2010)     | =main=, =develop=, feature, release and hotfix branches; long-lived  | Versioned releases (desktop, embedded)   |
+| GitHub Flow (2011)  | =main= always deployable; short feature branch + pull request        | Web apps, continuous deployment          |
+| Trunk-based         | Everyone integrates into =main= at least daily; branches live hours   | High-performing DevOps teams             |
+
+#+BEAMER: \vfill
+
+- DORA (/Accelerate/): trunk-based development (few active branches, branches living less than a day, no code freeze) predicts *higher delivery performance*
+
+#+begin_keyblock
+In this course: *GitHub Flow* (short branches + pull requests, next session).
+#+end_keyblock
+
+** Good commits
+
+*** Bad
+:PROPERTIES:
+:BEAMER_col: 0.45
+:BEAMER_env: alertblock
+:END:
+
+#+BEAMER: \small
+#+begin_example
+fix
+update
+wip
+changes from yesterday
+#+end_example
+
+*** Good
+:PROPERTIES:
+:BEAMER_col: 0.55
+:BEAMER_env: block
+:END:
+
+#+BEAMER: \small
+#+begin_example
+Fix crash when the cart is empty
+
+The total was computed before checking
+that the cart had items, which caused a
+division by zero on the checkout page.
+#+end_example
+
+*** Conclusion
+:PROPERTIES:
+:BEAMER_env: ignoreheading
+:END:
+
+#+BEAMER: \normalsize
+- *Small and atomic*: one logical change, which builds and passes the tests
+- *Subject*: short, imperative ("Fix", "Add"); *body*: explains */why/*, not what (the diff shows what)
+
+#+begin_keyblock
+In 6 months, the commit message is the *only* place where the "why" survives.
+#+end_keyblock
+
+* Wrap-up
+
+** Back to the broken production
+
+#+ATTR_LATEX: :booktabs t :align p{5.6cm}p{6.8cm} :font \small
+| *Question*                            | *Git answer*                                              |
+|---------------------------------------+-----------------------------------------------------------|
+| What changed since last week?         | =git log --since="1 week ago"=, =git diff=                |
+| Who changed this line, and why?       | =git blame=, then read the commit message                 |
+| Which commit broke it?                | =git bisect=: binary search in the history                |
+| Can we go back, now, safely?          | =git revert= (a new commit that undoes one change)        |
+
+#+BEAMER: \vfill
+#+begin_keyblock
+Each answer works only if commits are *small*, have a *good message*, and *everything* is versioned.
+#+end_keyblock
+
+** Key takeaways
+
+1. Version control = *time machine* + *collaboration protocol*; everything that builds and runs the system is versioned
+2. Each generation of VCS fixed the problems of the previous one; Git: *distributed*, *fast*, *trustworthy*
+3. Daily loop: =status=, =add=, =commit=, =pull=, =push=; the staging area makes each commit *one logical change*
+4. Undo safely: rewrite only what is not pushed; once shared, =revert=. A commit ID names an *exact version*
+5. Branches are *cheap pointers*; conflicts are Git *refusing to guess*
+6. Integrate *small and often*: long-lived branches recreate the vicious circle
+
+** Today's lab and further reading
+
+*** Lab 1
+:PROPERTIES:
+:BEAMER_col: 0.45
+:BEAMER_env: block
+:END:
+
+- A small Python app: feature branch, hotfix, conflict, rebase, undo
+- Push it to your pair's GitHub repository (kept all semester)
+
+*** Reading
+:PROPERTIES:
+:BEAMER_col: 0.55
+:BEAMER_env: block
+:END:
+
+- S. Chacon, B. Straub, /Pro Git/, 2nd ed., Apress (free online: git-scm.com/book), ch. 1-3
+- M. Fowler, "Patterns for Managing Source Code Branches", martinfowler.com, 2020
+- C. Beams, "How to Write a Git Commit Message", cbea.ms, 2014
+
+** Next session
+
+#+begin_center
+\Large *Collaboration and quality*
+
+\large Why review code? Why write tests? \\
+How do pull requests turn a branch into a team decision?
+#+end_center
+
+#+BEAMER: \vfill
+#+begin_center
+Questions?
+#+end_center

@@ -1,0 +1,776 @@
+#+TITLE: Collaboration and quality
+#+SUBTITLE: Pull requests, code review and tests
+#+SETUPFILE: ../common/slides.setup
+
+* Opening
+
+** Today's agenda
+
+1. Production is broken, again
+2. Why other eyes? Code review
+3. GitHub flow and pull requests
+4. Code review in practice
+5. Why tests?
+6. Writing tests with pytest
+7. Wrap-up
+
+#+BEAMER: \vfill
+#+begin_keyblock
+Today's question: */why/* should a change be *read by someone else* and *checked by a machine* before it reaches =main=?
+#+end_keyblock
+
+** Production is broken, again
+
+*** Left
+:PROPERTIES:
+:BEAMER_col: 0.5
+:END:
+
+#+BEAMER: \small
+#+begin_example
+def apply_discount(prices, percent):
+    return [p * (1 - percent / 100)
+            for p in prices]
+#+end_example
+#+BEAMER: \normalsize
+
+- A promotion is configured at =150= instead of =15=
+- =apply_discount([100], 150)= \rightarrow =[-50.0]=
+
+*** Right
+:PROPERTIES:
+:BEAMER_col: 0.5
+:END:
+
+#+BEAMER: \pause
+
+- Prices become *negative*
+- For one hour, the shop *pays* its customers to take its products
+- The commit was pushed *directly* to =main=, the evening before
+- "I tried it with 10%, it worked."
+
+*** Conclusion
+:PROPERTIES:
+:BEAMER_env: ignoreheading
+:END:
+
+#+BEAMER: \vfill
+#+begin_warnblock
+The code was in Git, with a good commit message. History tells us /what/ happened. It did not *stop* it.
+#+end_warnblock
+
+** Two questions
+
+#+begin_center
+\Large 1. Who else *looked* at this change?
+
+#+BEAMER: \vspace{0.3cm}
+\Large 2. How do we *know* it works?
+#+end_center
+
+#+BEAMER: \pause
+#+BEAMER: \vspace{0.5cm}
+
+#+ATTR_LATEX: :booktabs t :align p{4.5cm}p{4.2cm}p{3.8cm} :font \small
+| *Question*                  | *Practice*                     | *Tool today*            |
+|-----------------------------+--------------------------------+-------------------------|
+| Who else looked at it?      | Code review                    | Pull requests           |
+| How do we know it works?    | Automated tests                | pytest                  |
+| Can someone skip both?      | Protected =main=               | Branch rules            |
+
+* Why other eyes? Code review
+
+** Why review code?
+
+*** What a reviewer catches
+:PROPERTIES:
+:BEAMER_col: 0.5
+:BEAMER_env: block
+:END:
+
+- Bugs and missing cases ("what if the cart is empty?")
+- Unclear names, duplicated code
+- Design problems, security holes
+- Missing tests
+
+*** What the team gains
+:PROPERTIES:
+:BEAMER_col: 0.5
+:BEAMER_env: block
+:END:
+
+- *Two* people know each part of the code
+- Juniors learn from seniors, and the reverse
+- Shared style and conventions
+- A record of *why*, in the discussion
+
+*** Conclusion
+:PROPERTIES:
+:BEAMER_env: ignoreheading
+:END:
+
+#+BEAMER: \vfill
+#+begin_keyblock
+Review is not a *judgement* of the author: it is the team taking *shared ownership* of the code (lecture 1: blameless culture).
+#+end_keyblock
+
+** What the evidence says
+
+#+ATTR_LATEX: :booktabs t :align p{6cm}r :font \small
+| *Technique* (McConnell, /Code Complete/, 2004) | *Defects found (typical)* |
+|------------------------------------------------+---------------------------|
+| Informal code review                           | 25%                       |
+| Unit tests                                     | 30%                       |
+| Integration tests                              | 35%                       |
+| Formal code inspection                         | 60%                       |
+
+- No single technique finds most defects: *combine* them
+- Microsoft (Bacchelli & Bird, 2013) and Google (Sadowski et al., 2018): review finds bugs, but brings even more *knowledge transfer* and better code
+
+#+begin_keyblock
+Review and tests are *complementary*: today we do both.
+#+end_keyblock
+
+** The bus factor
+
+#+begin_center
+\large How many people must be hit by a bus \\
+before the project stops?
+#+end_center
+
+#+BEAMER: \pause
+
+- Bus factor = 1: only one person understands the payment code
+- They are sick, on holiday, or leave the company \rightarrow nobody can fix a bug in production
+- Every review spreads knowledge: the reviewer now *knows* this code
+
+#+BEAMER: \vfill
+#+begin_keyblock
+Code review is the cheapest way to raise the bus factor: knowledge spreads *as a side effect* of daily work.
+#+end_keyblock
+
+* GitHub flow and pull requests
+
+** From branch to pull request
+
+#+begin_export latex
+\begin{center}
+\begin{tikzpicture}[
+  c/.style={draw, circle, fill=accent!30, minimum size=0.55cm, inner sep=0},
+  f/.style={draw, circle, fill=devcol!25, minimum size=0.55cm, inner sep=0},
+  s/.style={font=\scriptsize, align=center},
+  arr/.style={-Stealth, thick}]
+  \draw[very thick, gray] (0,0) -- (13,0);
+  \node[font=\small\ttfamily, anchor=east] at (-0.1,0) {main};
+  \node[c] (m1) at (0.5,0) {}; \node[c] (m2) at (1.5,0) {};
+  \node[c, fill=green!40] (m3) at (11,0) {};
+  \draw[thick, devcol] (m2) .. controls (2.2,1.4) .. (3,1.4) -- (9.5,1.4) .. controls (10.3,1.4) .. (m3);
+  \node[f] at (3.2,1.4) {}; \node[f] at (4.4,1.4) {}; \node[f] at (8.2,1.4) {};
+  \node[font=\scriptsize\ttfamily, devcol] at (3.8,1.9) {feature/shipping};
+  \draw[rounded corners, fill=accent!12, draw=accent] (5.1,0.9) rectangle (7.6,2.3);
+  \node[s] at (6.35,1.6) {\textbf{Pull request}\\ discussion, review,\\ fixes pushed};
+  \node[s] at (1.5,-0.6) {1. branch};
+  \node[s] at (3.8,0.75) {2. commit};
+  \node[s] at (5.0,-0.6) {3. push +\\ open PR};
+  \node[s] at (8.2,-0.6) {4. review\\ (+ checks)};
+  \node[s] at (11,-0.6) {5. merge};
+  \node[s] at (12.6,-0.6) {6. deploy,\\ delete branch};
+\end{tikzpicture}
+\end{center}
+#+end_export
+
+- A *pull request* (PR): "please pull my branch into =main=", plus a place to *discuss* it
+- Commits pushed to the branch *update* the PR automatically
+
+#+begin_keyblock
+A pull request turns a branch into a *team decision*: nobody merges alone.
+#+end_keyblock
+
+** GitHub flow (S. Chacon, 2011)
+
+1. =main= is *always deployable*
+2. Create a *descriptively named* branch from =main= (=fix/discount-limit=)
+3. Commit locally, *push* the branch often
+4. Open a pull request when you want feedback, or when you are done
+5. Merge *after* review and green checks
+6. Deploy right after the merge; delete the branch
+
+#+BEAMER: \vfill
+#+begin_keyblock
+Short-lived branches + a PR as the gate to =main=: the *trunk-based* idea of lecture 2, made safe.
+#+end_keyblock
+
+** Anatomy of a pull request
+
+*** Left
+:PROPERTIES:
+:BEAMER_col: 0.48
+:END:
+
+- *Title*: what, in one line (like a commit subject)
+- *Description*: *why*, how to test, screenshots
+- *Linked issue*: =Closes #12=
+- *Reviewers*: who must approve
+
+*** Right
+:PROPERTIES:
+:BEAMER_col: 0.52
+:END:
+
+- *Files changed*: the diff, with line comments
+- *Conversation*: questions, answers, decisions
+- *Checks*: automated tests (next session)
+- *Merge button*: only when everything is green
+
+*** Conclusion
+:PROPERTIES:
+:BEAMER_env: ignoreheading
+:END:
+
+#+BEAMER: \vfill
+#+begin_keyblock
+In 6 months, the PR is where the "why" survives, next to the commit messages.
+#+end_keyblock
+
+** Issues: the "why" before the code
+
+#+BEAMER: \small
+#+begin_example
+Issue #3   Discount over 100% gives negative prices
+  apply_discount([100], 150) returns [-50.0].
+  Expected: the discount is refused.
+
+Pull request #4   Refuse discounts outside 0-100%
+  Closes #3
+#+end_example
+#+BEAMER: \normalsize
+
+- An *issue* describes a problem or a request: bug, feature, question
+- =Closes #3= in a PR description: the issue closes *automatically* when the PR is merged
+
+#+begin_keyblock
+Issue \rightarrow branch \rightarrow PR \rightarrow merge: every change in =main= can be traced back to a *reason*.
+#+end_keyblock
+
+** Small pull requests
+
+*** Left
+:PROPERTIES:
+:BEAMER_col: 0.52
+:END:
+
+- Cisco study (SmartBear, 2006, 2500 reviews): beyond about *400 lines*, reviewers find much fewer defects
+- 10 lines: 10 comments. 500 lines: "Looks good to me"
+- One PR = *one purpose*: no "fix + refactoring + new feature"
+
+*** Right
+:PROPERTIES:
+:BEAMER_col: 0.48
+:END:
+
+#+begin_export latex
+\begin{tikzpicture}[scale=0.8]
+  \draw[-Stealth] (0,0) -- (5,0) node[right, font=\scriptsize]{lines};
+  \draw[-Stealth] (0,0) -- (0,3.5) node[above, font=\scriptsize]{defects found per line};
+  \draw[very thick, devcol] (0.2,3) .. controls (1.5,2.9) and (2,2.6) .. (2.4,1.6) .. controls (2.8,0.7) and (3.5,0.4) .. (4.7,0.3);
+  \draw[dashed, gray] (2.4,0) -- (2.4,3);
+  \node[font=\scriptsize, above] at (2.4,3) {$\approx$ 400 lines};
+\end{tikzpicture}
+#+end_export
+
+*** Conclusion
+:PROPERTIES:
+:BEAMER_env: ignoreheading
+:END:
+
+#+BEAMER: \vfill
+#+begin_keyblock
+Lecture 1 again: *small batches* are easier to check, faster to merge, and cheaper to undo.
+#+end_keyblock
+
+** Three merge buttons
+
+#+ATTR_LATEX: :booktabs t :align p{3cm}p{5.5cm}p{4.3cm} :font \footnotesize
+| *Button*          | *Result on =main=*                                  | *Good for*                         |
+|-------------------+-----------------------------------------------------+------------------------------------|
+| Merge commit      | All commits of the branch + a merge commit          | Keeping the full real history      |
+| Squash and merge  | *One* commit with all the changes of the PR         | Clean history: one PR = one commit |
+| Rebase and merge  | The commits replayed on top of =main=, no merge commit | Linear history, commits kept    |
+
+#+BEAMER: \vfill
+
+- Same choice as lecture 2 (merge or rebase?), now made *on GitHub*
+- Squash: the "wip" and "fix typo" commits of the branch disappear from =main=
+
+#+begin_keyblock
+Pick one convention per project and write it down. In our labs: *squash and merge*.
+#+end_keyblock
+
+** Protecting =main=
+
+*** Left
+:PROPERTIES:
+:BEAMER_col: 0.52
+:END:
+
+A *branch rule* (GitHub ruleset) on =main=:
+- *Require a pull request*: no direct push
+- *Require 1 approval*: the author cannot approve their own PR
+- *Block force pushes* and deletion
+- *Require status checks*: tests must pass (next session)
+
+*** Right
+:PROPERTIES:
+:BEAMER_col: 0.48
+:END:
+
+#+BEAMER: \scriptsize
+#+begin_example
+$ git push origin main
+remote: error: GH013: Repository rule
+  violations found for refs/heads/main.
+remote: - Changes must be made
+  through a pull request.
+ ! [remote rejected] main -> main
+#+end_example
+#+BEAMER: \normalsize
+
+*** Conclusion
+:PROPERTIES:
+:BEAMER_env: ignoreheading
+:END:
+
+#+BEAMER: \vfill
+#+begin_warnblock
+A process that can be skipped *will* be skipped, the evening before a release. Make the safe path the *only* path, for everyone, admins included.
+#+end_warnblock
+
+* Code review in practice
+
+** What to look for, what to leave to machines
+
+*** Humans
+:PROPERTIES:
+:BEAMER_col: 0.5
+:BEAMER_env: block
+:END:
+
+- Does it do what the issue asks?
+- Missing cases: empty, zero, negative, too big
+- Are there *tests* for the new behaviour?
+- Can I understand it without the author?
+- Is it the right design?
+
+*** Machines
+:PROPERTIES:
+:BEAMER_col: 0.5
+:BEAMER_env: alertblock
+:END:
+
+- Formatting, spaces, line length (formatter)
+- Unused variables, style rules (linter)
+- "Do the tests still pass?" (CI)
+- Known vulnerable libraries (scanner)
+
+*** Conclusion
+:PROPERTIES:
+:BEAMER_env: ignoreheading
+:END:
+
+#+BEAMER: \vfill
+#+begin_keyblock
+Do not spend human attention on what a tool can check: reviewers should argue about *behaviour and design*, not commas.
+#+end_keyblock
+
+** Writing review comments
+
+*** Bad
+:PROPERTIES:
+:BEAMER_col: 0.45
+:BEAMER_env: alertblock
+:END:
+
+#+BEAMER: \small
+- "This is wrong."
+- "Why would anyone write this?"
+- "Use a list comprehension." (on a style choice)
+- 40 comments on spaces
+#+BEAMER: \normalsize
+
+*** Good
+:PROPERTIES:
+:BEAMER_col: 0.55
+:BEAMER_env: block
+:END:
+
+#+BEAMER: \small
+- "What happens with ~percent = 150~? Could we add a test?"
+- "I find =shipping_cost= clearer than =sc=, what do you think?"
+- "nit: typo in the docstring" (minor, optional)
+- "Nice idea, I did not know this function!"
+#+BEAMER: \normalsize
+
+*** Conclusion
+:PROPERTIES:
+:BEAMER_env: ignoreheading
+:END:
+
+#+BEAMER: \vfill
+- Comment the *code*, never the *person*; ask questions; explain *why*
+- Say clearly what *blocks* the merge and what is only a suggestion
+
+** Being reviewed
+
+- Read your own diff on GitHub *before* asking for review: you will find half of the problems
+- Keep the PR *small*, with a description that explains *why* and *how to test*
+- Answer *every* comment: fix it, or explain why not
+- A comment on your code is not an attack on you: *you are not your code*
+- Disagreement? Talk (or call) instead of a 30-message thread
+
+#+BEAMER: \vfill
+#+begin_keyblock
+Good review is a *conversation* between two people who want the same thing: working code in =main=.
+#+end_keyblock
+
+* Why tests?
+
+** "It works, I tried it"
+
+*** Left
+:PROPERTIES:
+:BEAMER_col: 0.5
+:END:
+
+- You tried it *once*, with 10%, on your laptop
+- Next week, someone changes =total()=: who tries =apply_discount= again?
+- 50 functions \times 10 changes a week: nobody re-checks everything by hand
+
+*** Right
+:PROPERTIES:
+:BEAMER_col: 0.5
+:END:
+
+#+BEAMER: \pause
+
+#+begin_export latex
+\begin{tikzpicture}[scale=0.8]
+  \draw[-Stealth] (0,0) -- (4.5,0) node[below left, font=\scriptsize]{size of the app};
+  \draw[-Stealth] (0,0) -- (0,3.5) node[above, font=\scriptsize]{time to check everything};
+  \draw[very thick, opscol] (0.2,0.2) -- (4.2,3.2) node[left, font=\scriptsize, pos=0.85]{by hand};
+  \draw[very thick, devcol] (0.2,0.15) -- (4.2,0.45) node[above left, font=\scriptsize]{automated};
+\end{tikzpicture}
+#+end_export
+
+*** Conclusion
+:PROPERTIES:
+:BEAMER_env: ignoreheading
+:END:
+
+#+BEAMER: \vfill
+#+begin_keyblock
+An *automated test* is a check written once and run *thousands of times*, in seconds, by anyone, and soon by a machine (CI).
+#+end_keyblock
+
+** Fear of change
+
+#+begin_export latex
+\begin{center}
+\begin{tikzpicture}[
+  n/.style={draw, rounded corners, fill=opscol!12, text width=3.1cm, align=center, font=\small, minimum height=0.9cm},
+  arr/.style={-Stealth, very thick, opscol}]
+  \node[n] (a) at (0,1.4) {No tests};
+  \node[n] (b) at (4.5,1.4) {Every change\\ might break something};
+  \node[n] (c) at (4.5,-0.4) {Change rarely,\\ in big batches};
+  \node[n] (d) at (0,-0.4) {Big, risky releases};
+  \draw[arr] (a) -- (b); \draw[arr] (b) -- (c); \draw[arr] (c) -- (d); \draw[arr] (d) -- (a);
+  \node[draw, rounded corners, fill=devcol!12, text width=4cm, align=center, font=\small] at (10,0.5) {\textbf{With tests}\\ change \(\rightarrow\) run the tests\\ \(\rightarrow\) green: ship it\\ \(\rightarrow\) red: you know \emph{where}};
+\end{tikzpicture}
+\end{center}
+#+end_export
+
+- Lecture 1's vicious circle, at the scale of one function
+- Without tests, nobody dares to *clean up* (refactor) old code: it only gets worse
+
+#+begin_keyblock
+Tests are not about proving the code is perfect: they give the team the *courage to change it*.
+#+end_keyblock
+
+** The later a bug is found, the more it costs
+
+#+begin_export latex
+\begin{center}
+\begin{tikzpicture}[b/.style={fill=accent!60, draw=accent}]
+  \foreach \x/\h/\l in {0/0.2/Editor, 2.2/0.4/Review, 4.4/0.7/CI, 6.6/1.2/Staging, 8.8/2.1/Production}
+    { \draw[b] (\x,0) rectangle ++(1.4,\h); \node[font=\small, below] at (\x+0.7,0) {\l}; }
+  \draw[-Stealth, thick] (-0.3,0) -- (-0.3,2.3) node[right, font=\scriptsize]{cost of a fix};
+  \node[font=\scriptsize, text width=4.2cm, align=left] at (6,1.9) {in production: angry users, lost money, night calls, a postmortem};
+\end{tikzpicture}
+\end{center}
+#+end_export
+
+- *Shift left*: move the checks as early as possible (tests, review, then CI)
+
+#+begin_keyblock
+Each practice of this course moves the discovery of a bug *one step to the left*.
+#+end_keyblock
+
+** The test pyramid (M. Cohn, 2009)
+
+*** Left
+:PROPERTIES:
+:BEAMER_col: 0.55
+:END:
+
+#+begin_export latex
+\begin{tikzpicture}
+  \fill[devcol!25] (0,0) -- (6,0) -- (4.8,1.1) -- (1.2,1.1) -- cycle;
+  \fill[accent!35] (1.2,1.1) -- (4.8,1.1) -- (3.75,2.1) -- (2.25,2.1) -- cycle;
+  \fill[opscol!30] (2.25,2.1) -- (3.75,2.1) -- (3,2.8) -- cycle;
+  \draw (0,0) -- (6,0) -- (3,2.8) -- cycle;
+  \node[font=\small] at (3,0.55) {\textbf{Unit}: one function};
+  \node[font=\small] at (3,1.6) {\textbf{Integration}};
+  \node[font=\scriptsize] at (3,2.35) {\textbf{E2E}};
+  \draw[-Stealth, thick] (6.4,0.2) -- (6.4,2.6) node[midway, right, font=\scriptsize, align=left]{slower,\\ costlier,\\ more realistic};
+\end{tikzpicture}
+#+end_export
+
+*** Right
+:PROPERTIES:
+:BEAMER_col: 0.45
+:END:
+
+- *Unit*: one function, milliseconds, hundreds of them
+- *Integration*: several parts together (app + database)
+- *End-to-end*: a robot clicks through the real app, slow and fragile
+
+*** Conclusion
+:PROPERTIES:
+:BEAMER_env: ignoreheading
+:END:
+
+#+BEAMER: \vfill
+#+begin_keyblock
+Many fast unit tests at the bottom, a few slow end-to-end tests at the top. Today: *unit tests*.
+#+end_keyblock
+
+* Writing tests with pytest
+
+** A first test
+
+*** Left
+:PROPERTIES:
+:BEAMER_col: 0.55
+:END:
+
+#+BEAMER: \small
+#+begin_example
+# test_cart.py
+from cart import average
+
+def test_average():
+    # arrange
+    prices = [10, 20]
+    # act
+    result = average(prices)
+    # assert
+    assert result == 15
+#+end_example
+#+BEAMER: \normalsize
+
+*** Right
+:PROPERTIES:
+:BEAMER_col: 0.45
+:END:
+
+- A test is a *function* whose name starts with =test_=, in a file =test_*.py=
+- *Arrange*, *act*, *assert*
+- =pytest= finds and runs them all
+
+#+BEAMER: \small
+#+begin_example
+$ pytest
+test_cart.py ....        [100%]
+====== 4 passed in 0.02s ======
+#+end_example
+#+BEAMER: \normalsize
+
+** Reading a failure
+
+#+BEAMER: \scriptsize
+#+begin_example
+$ pytest
+test_cart.py .F..                                               [100%]
+_________________________ test_average_empty_cart _________________________
+
+    def test_average_empty_cart():
+>       assert average([]) == 0
+E       assert None == 0
+E        +  where None = average([])
+
+test_cart.py:7: AssertionError
+==================== 1 failed, 3 passed in 0.03s ====================
+#+end_example
+#+BEAMER: \normalsize
+
+- *Which* test failed, on *which line*, with *which values*: =average([])= returned =None=, not =0=
+- A red test is *good news*: the bug was found on your laptop, not by a customer
+
+** What to test?
+
+#+ATTR_LATEX: :booktabs t :align p{3.4cm}p{9.2cm} :font \small
+| *Kind of case*      | *Example for the shop*                                         |
+|---------------------+----------------------------------------------------------------|
+| Normal case         | ~average([10, 20]) == 15~                                      |
+| Empty / zero        | ~average([]) == 0~, ~total([]) == 0~                           |
+| Boundaries          | Free shipping "from 50": test 49, *50*, 51                     |
+| Invalid input       | =apply_discount([100], 150)= must *raise* an error             |
+
+#+BEAMER: \small
+#+begin_example
+import pytest
+
+def test_discount_over_100_is_refused():
+    with pytest.raises(ValueError):
+        apply_discount([100], 150)
+#+end_example
+#+BEAMER: \normalsize
+
+#+begin_keyblock
+Bugs live at the *edges*: empty, zero, boundaries, invalid input. Test those first.
+#+end_keyblock
+
+** A bug? Write the test first
+
+#+begin_export latex
+\begin{center}
+\begin{tikzpicture}[
+  s/.style={draw, rounded corners, minimum width=3.2cm, minimum height=1cm, align=center, font=\small},
+  arr/.style={-Stealth, very thick}]
+  \node[s, fill=opscol!20] (r) at (0,0) {\textbf{1. Red}\\ \scriptsize a test reproduces the bug};
+  \node[s, fill=green!20] (g) at (4.5,0) {\textbf{2. Green}\\ \scriptsize fix the code};
+  \node[s, fill=devcol!15] (f) at (9,0) {\textbf{3. Refactor}\\ \scriptsize clean up, tests stay green};
+  \draw[arr] (r) -- (g); \draw[arr] (g) -- (f);
+  \draw[arr, gray] (f.south) .. controls (9,-1.3) and (0,-1.3) .. (r.south);
+\end{tikzpicture}
+\end{center}
+#+end_export
+
+- The issue says "150% gives negative prices": first, a *test* that fails for this reason
+- Then fix: the test turns green. You *know* the fix works
+- The test stays forever: this bug can never come back silently (*regression test*)
+- Writing tests before the code for *everything*: Test-Driven Development (K. Beck, 2002)
+
+#+begin_keyblock
+Never fix a bug without a test that proves it: otherwise it *will* come back.
+#+end_keyblock
+
+** Coverage: a measure, not a goal
+
+*** Left
+:PROPERTIES:
+:BEAMER_col: 0.5
+:END:
+
+- *Coverage*: % of lines run by the tests (=pytest --cov=, plugin =pytest-cov=)
+- Low coverage: whole parts are *never* tested. Useful alarm
+- High coverage does not mean good tests
+
+*** Right
+:PROPERTIES:
+:BEAMER_col: 0.5
+:END:
+
+#+BEAMER: \small
+#+begin_example
+def test_discount():
+    apply_discount([100], 10)
+    # 100% coverage of
+    # apply_discount...
+    # and no assert!
+#+end_example
+#+BEAMER: \normalsize
+
+*** Conclusion
+:PROPERTIES:
+:BEAMER_env: ignoreheading
+:END:
+
+#+BEAMER: \vfill
+#+begin_warnblock
+Goodhart's law: "when a measure becomes a target, it ceases to be a good measure". Aim for tests that *would fail* if the code broke, not for a number.
+#+end_warnblock
+
+** Good unit tests: FIRST
+
+#+ATTR_LATEX: :booktabs t :align p{3cm}p{9.6cm} :font \small
+| *Property*         | *Why*                                                            |
+|--------------------+------------------------------------------------------------------|
+| \textbf{F}ast        | Milliseconds: you run them after every change, without thinking |
+| \textbf{I}ndependent | Any order, alone or together: one test never depends on another |
+| \textbf{R}epeatable  | Same result on every laptop, every day (no network, no clock)   |
+| \textbf{S}elf-validating | Pass or fail, no human reading the output                   |
+| \textbf{T}imely      | Written with the code (or before), not "later"                  |
+
+#+BEAMER: \vfill
+#+begin_keyblock
+A slow or random ("flaky") test is soon ignored by everyone: it is worse than no test.
+#+end_keyblock
+
+* Wrap-up
+
+** Back to the broken production
+
+#+ATTR_LATEX: :booktabs t :align p{4.6cm}p{7.8cm} :font \small
+| *Practice*                    | *What it would have done*                                  |
+|-------------------------------+------------------------------------------------------------|
+| Issue                         | Written down the rule: "a discount is between 0 and 100%"  |
+| Protected =main=              | No direct push the evening before: a PR is mandatory       |
+| Code review                   | "What happens with 150?"                                    |
+| Test with =pytest.raises=     | Red on the author's laptop, before the PR                  |
+
+#+BEAMER: \vfill
+#+begin_keyblock
+Two cheap safety nets: a *human* who reads, a *machine* that checks. Each one catches what the other misses.
+#+end_keyblock
+
+** Key takeaways
+
+1. Review catches bugs, but above all *spreads knowledge* (bus factor) and builds *shared ownership*
+2. GitHub flow: short branch \rightarrow pull request \rightarrow review \rightarrow merge; =main= is always deployable
+3. Small PRs, linked to an issue, reviewed with kind and precise comments
+4. Protect =main=: the safe path must be the *only* path
+5. Automated tests replace "I tried it once"; they give the *courage to change*
+6. Test the edges; for each bug, write the failing test *first*
+
+** Today's lab and further reading
+
+*** Lab 2
+:PROPERTIES:
+:BEAMER_col: 0.45
+:BEAMER_env: block
+:END:
+
+- First pytest tests for the shop
+- Protect =main=
+- Issue \rightarrow PR \rightarrow review \rightarrow merge, each student in both roles
+- Fix the discount bug, test first
+
+*** Reading
+:PROPERTIES:
+:BEAMER_col: 0.55
+:BEAMER_env: block
+:END:
+
+- GitHub Docs, "GitHub flow", docs.github.com
+- Google, /Engineering Practices: Code Review Developer Guide/, google.github.io/eng-practices
+- /pytest/ documentation, "Get Started", docs.pytest.org
+- M. Fowler, "TestPyramid", martinfowler.com, 2012
+
+** Next session
+
+#+begin_center
+\Large *Continuous Integration*
+
+\large Who runs the tests? Every time? On every branch? \\
+How can a machine check each pull request before a human reads it?
+#+end_center
