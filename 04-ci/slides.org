@@ -1,0 +1,833 @@
+#+TITLE: Continuous Integration
+#+SUBTITLE: Let a machine check every change
+#+SETUPFILE: ../common/slides.setup
+
+* Opening
+
+** Today's agenda
+
+1. Who ran the tests?
+2. Why continuous integration?
+3. GitHub Actions
+4. CI in the pull request
+5. Testing and verification
+6. Going further
+7. Wrap-up
+
+#+BEAMER: \vfill
+#+begin_keyblock
+Today's question: */why/* should a machine, not a person, check *every* change, *every* time?
+#+end_keyblock
+
+** Who ran the tests?
+
+*** Left
+:PROPERTIES:
+:BEAMER_col: 0.5
+:END:
+
+- Last lab: to review, you had to fetch the branch and run =pytest= *by hand*
+- A busy week: 6 PRs to review, a deadline
+- The reviewer reads the diff, it looks fine: *Approve*
+- Nobody ran =pytest=. =main= is broken
+
+*** Right
+:PROPERTIES:
+:BEAMER_col: 0.5
+:END:
+
+#+BEAMER: \pause
+
+#+BEAMER: \small
+#+begin_example
+$ git pull
+$ pytest
+E   ModuleNotFoundError:
+    No module named 'stats'
+#+end_example
+#+BEAMER: \normalsize
+
+- "But it works on my machine!"
+- The author forgot to =git add= a new file: on *their* laptop, it is there
+
+*** Conclusion
+:PROPERTIES:
+:BEAMER_env: ignoreheading
+:END:
+
+#+BEAMER: \vfill
+#+begin_warnblock
+Tests that nobody runs protect nothing. And a test that passes on *one* laptop proves little.
+#+end_warnblock
+
+** Two problems
+
+#+begin_center
+\Large 1. Humans *forget*, especially in a hurry
+
+#+BEAMER: \vspace{0.3cm}
+\Large 2. Laptops *differ*
+#+end_center
+
+#+BEAMER: \pause
+#+BEAMER: \vspace{0.5cm}
+
+#+begin_keyblock
+One answer to both: a *neutral machine* that takes each change, builds it *from scratch*, and runs *all* the checks, automatically, every time.
+#+end_keyblock
+
+* Why continuous integration?
+
+** Integration hell, again
+
+*** Left
+:PROPERTIES:
+:BEAMER_col: 0.55
+:END:
+
+- Lecture 2: long-lived branches \rightarrow painful merges. Answer: *integrate small and often*
+- Lecture 3: each integration goes through a PR, review and tests
+- Integrating 10 times a day \times 5 developers = 50 checks a day
+- By hand? Nobody will do it
+
+*** Right
+:PROPERTIES:
+:BEAMER_col: 0.45
+:END:
+
+#+begin_export latex
+\begin{tikzpicture}[scale=0.8]
+  \draw[-Stealth] (0,0) -- (4.5,0) node[below left, font=\scriptsize]{integrations per day};
+  \draw[-Stealth] (0,0) -- (0,3.5) node[above, font=\scriptsize]{checking effort};
+  \draw[very thick, opscol] (0.2,0.2) -- (4.2,3.2) node[left, font=\scriptsize, pos=0.8]{by hand};
+  \draw[very thick, devcol] (0.2,0.3) -- (4.2,0.35) node[above left, font=\scriptsize]{CI};
+\end{tikzpicture}
+#+end_export
+
+*** Conclusion
+:PROPERTIES:
+:BEAMER_env: ignoreheading
+:END:
+
+#+BEAMER: \vfill
+#+begin_keyblock
+Integrating often is only safe if *each* integration is checked. Only a machine can check that often.
+#+end_keyblock
+
+** What is continuous integration?
+
+#+begin_center
+\large "Continuous Integration is a software development practice where members of a team *integrate their work frequently*, usually each person integrates at least daily. Each integration is *verified by an automated build* (including tests) to detect integration errors as quickly as possible."
+
+\hfill M. Fowler, 2006
+#+end_center
+
+#+BEAMER: \vfill
+
+- Two halves: a *habit* (integrate daily into =main=) and a *machine* (verify each integration)
+- A CI server on a project where branches live 3 weeks is *not* CI
+
+#+begin_keyblock
+CI is a *practice* first. The tool only makes the practice affordable.
+#+end_keyblock
+
+** A short history
+
+#+begin_export latex
+\begin{center}
+\begin{tikzpicture}[e/.style={font=\scriptsize, text width=2.3cm, align=center}]
+  \draw[very thick, -Stealth] (0,0) -- (14,0);
+  \foreach \x/\y/\t in {0.8/1991/{G. Booch names ``continuous integration''}, 3.2/1999/{Extreme Programming: integrate several times a day}, 5.6/2001/{CruiseControl: first popular CI server}, 8.0/2011/{Jenkins, Travis CI: CI for everyone}, 10.4/2019/{GitHub Actions: CI as a file next to the code}, 12.8/today/{CI is a default, not an option}}
+  { \fill[accent] (\x,0) circle (3pt); \node[font=\small\bfseries, below=3pt] at (\x,0) {\y}; \node[e, above=6pt] at (\x,0) {\t}; }
+\end{tikzpicture}
+\end{center}
+#+end_export
+
+#+BEAMER: \vspace{0.3cm}
+
+- First, a person ran the "nightly build"; then a dedicated server; today, a *file in the repository* describes the checks
+- DORA (/Accelerate/): continuous integration and trunk-based development predict *higher delivery performance*
+
+** "It works on my machine"
+
+#+ATTR_LATEX: :booktabs t :align p{4.3cm}p{8.4cm} :font \small
+| *On your laptop*                         | *On a fresh machine*                                   |
+|------------------------------------------+--------------------------------------------------------|
+| A new file you forgot to =git add=       | Not in the repository: =ModuleNotFoundError=           |
+| A package you installed months ago       | Not in =requirements-dev.txt=: =ImportError=           |
+| Python 3.12                              | The server, or a colleague, has Python 3.10            |
+| Files left over from old experiments     | Only what is committed                                 |
+| Windows, macOS                           | Linux, like most production servers                    |
+
+#+BEAMER: \vfill
+#+begin_keyblock
+CI starts from an *empty machine* and *only what is committed*: if it passes there, it does not depend on your laptop.
+#+end_keyblock
+
+** The CI feedback loop
+
+#+begin_export latex
+\begin{center}
+\begin{tikzpicture}[
+  s/.style={draw, rounded corners, fill=accent!15, minimum width=1.9cm, minimum height=0.8cm, align=center, font=\small},
+  arr/.style={-Stealth, very thick}]
+  \node[s, fill=devcol!15] (d) at (0,0) {Developer\\ \scriptsize push / PR};
+  \node[s] (c) at (3,0) {Checkout\\ \scriptsize fresh copy};
+  \node[s] (i) at (5.6,0) {Install\\ \scriptsize dependencies};
+  \node[s] (l) at (8.2,0) {Lint};
+  \node[s] (t) at (10.8,0) {Test};
+  \draw[arr] (d) -- (c); \draw[arr] (c) -- (i); \draw[arr] (i) -- (l); \draw[arr] (l) -- (t);
+  \draw[arr, green!50!black] (t.south) .. controls (10.8,-1.6) and (0,-1.6) .. node[below, font=\small]{green or red, in a few minutes, with the logs} (d.south);
+  \draw[decorate, decoration={brace, amplitude=6pt}] (2.1,0.6) -- (11.8,0.6) node[midway, above=7pt, font=\scriptsize]{on a CI server (runner), automatically, for every push};
+\end{tikzpicture}
+\end{center}
+#+end_export
+
+#+BEAMER: \vspace{0.2cm}
+- The developer gets the answer while the change is still *fresh in their head*
+- Lecture 3: *shift left*. CI is the step between the laptop and the reviewer
+
+** The rules of CI
+
+1. Everyone integrates into =main= at least *daily*
+2. Every push triggers an *automated* build and tests
+3. The build is *fast*: under 10 minutes, ideally under 5
+4. A red =main= is the team's *top priority*: fix it or revert it, now
+5. Everybody *sees* the result; nobody merges on red
+
+#+BEAMER: \vfill
+#+begin_keyblock
+Rule 4 is the "stop the line" of Toyota factories: when something is broken, the whole team stops to fix it, instead of building on top of it.
+#+end_keyblock
+
+* GitHub Actions
+
+** Vocabulary
+
+#+begin_export latex
+\begin{center}
+\begin{tikzpicture}[font=\small]
+  \draw[rounded corners, fill=gray!8] (0,0) rectangle (12.6,3.4);
+  \node[anchor=north west] at (0.1,3.35) {\textbf{Workflow} \scriptsize\texttt{.github/workflows/ci.yml}, triggered by an \textbf{event} (push, pull request...)};
+  \draw[rounded corners, fill=devcol!12] (0.3,0.2) rectangle (6.1,2.6);
+  \node[anchor=north west] at (0.4,2.55) {\textbf{Job} \scriptsize\texttt{test}, on a \textbf{runner} (fresh VM)};
+  \foreach \y/\t in {1.75/{Step: \texttt{uses: actions/checkout}}, 1.15/{Step: \texttt{uses: actions/setup-python}}, 0.55/{Step: \texttt{run: pytest}}}
+    { \draw[fill=accent!20, rounded corners] (0.5,\y-0.25) rectangle (5.9,\y+0.25); \node at (3.2,\y) {\scriptsize \t}; }
+  \draw[rounded corners, fill=devcol!12] (6.5,0.2) rectangle (12.3,2.6);
+  \node[anchor=north west] at (6.6,2.55) {\textbf{Job} \scriptsize\texttt{lint} (runs in parallel)};
+  \foreach \y/\t in {1.75/{Step: \texttt{uses: actions/checkout}}, 1.15/{Step: \texttt{run: pip install ruff}}, 0.55/{Step: \texttt{run: ruff check .}}}
+    { \draw[fill=accent!20, rounded corners] (6.7,\y-0.25) rectangle (12.1,\y+0.25); \node at (9.4,\y) {\scriptsize \t}; }
+\end{tikzpicture}
+\end{center}
+#+end_export
+
+- *Step*: a shell command (=run=) or a reusable *action* (=uses=)
+- Steps of a job run in order, on the same machine; jobs run in *parallel*, on different machines
+
+** A first workflow
+
+*** Left
+:PROPERTIES:
+:BEAMER_col: 0.55
+:END:
+
+#+BEAMER: \scriptsize
+#+begin_example
+# .github/workflows/ci.yml
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - run: pip install -r requirements-dev.txt
+      - run: pytest
+#+end_example
+#+BEAMER: \normalsize
+
+*** Right
+:PROPERTIES:
+:BEAMER_col: 0.45
+:END:
+
+- A YAML file, *versioned with the code*: reviewed in PRs like any code
+- =on=: when to run
+- =jobs=: what to run, and where
+- 17 lines replace "did you run the tests?"
+
+#+begin_warnblock
+YAML is indentation-sensitive: spaces, never tabs.
+#+end_warnblock
+
+** Reading the workflow
+
+#+ATTR_LATEX: :booktabs t :align ll :font \footnotesize
+| *Line*                       | *Meaning*                                                  |
+|------------------------------+------------------------------------------------------------|
+| =push= on =main=             | Run after each merge into =main=                           |
+| =pull_request=               | Run for each PR, and each new commit pushed to it          |
+| =runs-on: ubuntu-latest=     | A fresh Ubuntu virtual machine, destroyed after the job    |
+| =actions/checkout@v4=        | Copy the repository (only what is committed!)              |
+| =actions/setup-python@v5=    | Install the requested Python version                       |
+| =pip install -r ...=         | Install exactly the declared dependencies                  |
+| =pytest=                     | A failing command (exit code \(\neq\) 0) makes the job red |
+
+#+BEAMER: \vfill
+#+begin_keyblock
+A red job is just a command that *failed*: =pytest= fails when a test fails.
+#+end_keyblock
+
+** Events: when should CI run?
+
+#+ATTR_LATEX: :booktabs t :align p{3.6cm}p{9.1cm} :font \small
+| *Event*                   | *Typical use*                                                    |
+|---------------------------+------------------------------------------------------------------|
+| =pull_request=            | Check a change *before* the merge: the main use                  |
+| =push= on =main=          | Check =main= *after* the merge (and later: deploy it)            |
+| =schedule= (cron)         | Every night: slow tests, dependency vulnerabilities              |
+| =workflow_dispatch=       | A "Run workflow" button, for manual runs                         |
+
+#+BEAMER: \vfill
+
+- Why not =push= on every branch? With =pull_request= too, each commit of a PR would run *twice*
+- Next sessions: the same file grows into a delivery pipeline (=push= on =main= \rightarrow deploy)
+
+** Runners
+
+*** GitHub-hosted
+:PROPERTIES:
+:BEAMER_col: 0.5
+:BEAMER_env: block
+:END:
+
+- A *fresh* virtual machine for each job: Ubuntu, Windows or macOS
+- Nothing survives from the previous run
+- Free for public repositories; a monthly quota for private ones
+
+*** Self-hosted
+:PROPERTIES:
+:BEAMER_col: 0.5
+:BEAMER_env: block
+:END:
+
+- Your own machine runs the jobs
+- Special hardware, internal network, no time limit
+- You maintain and secure it
+
+*** Conclusion
+:PROPERTIES:
+:BEAMER_env: ignoreheading
+:END:
+
+#+BEAMER: \vfill
+#+begin_keyblock
+A fresh machine every time is the whole point: no leftovers, no "it worked yesterday".
+#+end_keyblock
+
+** Actions: reusable steps
+
+- =uses: actions/checkout@v4=: code written by someone else, run *in your pipeline*
+- Thousands on the GitHub Marketplace: set up a language, cache, deploy, notify...
+- =@v4= *pins a version*: an update cannot change your pipeline without you knowing
+
+#+BEAMER: \vfill
+#+begin_warnblock
+An action runs with access to your code and your pipeline's token. Prefer official or well-known actions, and pin their version (or even their commit ID).
+#+end_warnblock
+
+#+BEAMER: \vfill
+- Lecture 1 again: the pipeline is *code*, so it gets the same care as code: review, versions, history
+
+** Reading a failed run
+
+#+BEAMER: \scriptsize
+#+begin_example
+ test   failed 41s ago in 18s
+ > Set up job
+ > Run actions/checkout@v4
+ > Run actions/setup-python@v5
+ > Run pip install -r requirements-dev.txt
+ v Run pytest
+   ERROR collecting test_cart.py
+   E   ModuleNotFoundError: No module named 'stats'
+   ======================= 1 error in 0.08s =======================
+   Error: Process completed with exit code 2.
+#+end_example
+#+BEAMER: \normalsize
+
+- Find the *first red step*, then read its log from the *bottom up*
+
+#+begin_keyblock
+Reading CI logs is a daily skill: the answer is almost always in the last 20 lines of the red step.
+#+end_keyblock
+
+* CI in the pull request
+
+** Checks in the pull request
+
+#+begin_export latex
+\begin{center}
+\begin{tikzpicture}[b/.style={draw, rounded corners, minimum width=6.4cm, minimum height=1.6cm, align=left, font=\small, text width=6.1cm}]
+  \node[b, fill=opscol!8, draw=opscol] at (0,0) {\textcolor{opscol}{\textbf{\(\times\) Some checks were not successful}}\\ \scriptsize CI / test (pull\_request): failing after 18s\\ \scriptsize Merging is blocked};
+  \node[b, fill=green!8, draw=green!50!black] at (7,0) {\textcolor{green!40!black}{\textbf{\(\checkmark\) All checks have passed}}\\ \scriptsize CI / test (pull\_request): successful in 21s\\ \scriptsize Review required: 1 approval};
+\end{tikzpicture}
+\end{center}
+#+end_export
+
+- The result appears *in the PR*, next to the review: no need to ask "did you run the tests?"
+- A new push to the branch \rightarrow a new run \rightarrow the status is updated
+- Same check on the commit in the history: a green or red mark next to each commit of =main=
+
+** Required status checks
+
+*** Left
+:PROPERTIES:
+:BEAMER_col: 0.52
+:END:
+
+The =main= ruleset of lab 2, plus:
+- *Require status checks to pass*: =test=
+- Red or still running \rightarrow the merge button is *disabled*
+- For everyone, admins included
+
+*** Right
+:PROPERTIES:
+:BEAMER_col: 0.48
+:END:
+
+#+begin_export latex
+\begin{tikzpicture}[s/.style={draw, rounded corners, minimum width=3.6cm, minimum height=0.6cm, font=\small}]
+  \node[s, fill=devcol!12] (p) at (0,2.4) {Pull request};
+  \node[s, fill=accent!20] (c) at (0,1.2) {CI green?};
+  \node[s, fill=accent!20] (r) at (0,0) {1 approval?};
+  \node[s, fill=green!20] (m) at (0,-1.2) {Merge allowed};
+  \draw[-Stealth, thick] (p) -- (c); \draw[-Stealth, thick] (c) -- node[right, font=\scriptsize]{yes} (r); \draw[-Stealth, thick] (r) -- node[right, font=\scriptsize]{yes} (m);
+\end{tikzpicture}
+#+end_export
+
+*** Conclusion
+:PROPERTIES:
+:BEAMER_env: ignoreheading
+:END:
+
+#+BEAMER: \vfill
+#+begin_warnblock
+The required check is identified by the *job name* (=test=). Rename the job, and every PR waits forever for a check that never comes.
+#+end_warnblock
+
+** Machine first, human second
+
+#+begin_export latex
+\begin{center}
+\begin{tikzpicture}[
+  s/.style={draw, rounded corners, minimum width=2.6cm, minimum height=0.9cm, align=center, font=\small},
+  arr/.style={-Stealth, very thick}]
+  \node[s, fill=devcol!15] (a) at (0,0) {Author\\ \scriptsize pushes};
+  \node[s, fill=accent!20] (b) at (4,0) {CI\\ \scriptsize lint + tests};
+  \node[s, fill=green!15] (c) at (8,0) {Reviewer\\ \scriptsize design, behaviour};
+  \node[s, fill=green!35] (d) at (12,0) {Merge};
+  \draw[arr] (a) -- (b); \draw[arr] (b) -- node[above, font=\scriptsize]{green} (c); \draw[arr] (c) -- node[above, font=\scriptsize]{approved} (d);
+  \draw[arr, opscol] (b.south) .. controls (4,-1.2) and (0,-1.2) .. node[below, font=\scriptsize]{red: the author fixes it, nobody's time wasted} (a.south);
+\end{tikzpicture}
+\end{center}
+#+end_export
+
+- Reviewers look at a PR *only when it is green*: no human time on what a machine can check
+- Lecture 3: "leave to machines formatting, style and running the tests". This is where it happens
+
+** Linting
+
+*** Left
+:PROPERTIES:
+:BEAMER_col: 0.5
+:END:
+
+- A *linter* reads the code without running it: unused imports, undefined names, suspicious code
+- Python: =ruff= (fast, many rules), also =flake8=, =pylint=
+- A *formatter* rewrites the layout: =ruff format=, =black=
+
+*** Right
+:PROPERTIES:
+:BEAMER_col: 0.5
+:END:
+
+#+BEAMER: \scriptsize
+#+begin_example
+$ ruff check .
+cart.py:1:8: F401 [*] `os` imported
+  but unused
+Found 1 error.
+[*] 1 fixable with the `--fix` option.
+#+end_example
+#+BEAMER: \normalsize
+
+*** Conclusion
+:PROPERTIES:
+:BEAMER_env: ignoreheading
+:END:
+
+#+BEAMER: \vfill
+#+begin_keyblock
+Configure the rules once, enforce them in CI, and style is never discussed in a review again.
+#+end_keyblock
+
+** Fast feedback
+
+- A 40-minute pipeline: developers stop waiting, switch tasks, batch their changes. Back to big batches
+- *Fail fast*: cheap checks first (lint: seconds), slow ones after (tests)
+- *Cache* the dependencies between runs: =setup-python= with =cache: pip=
+- *Parallel jobs*: lint and test at the same time, on different runners
+- Slow tests (end-to-end) in a separate, less frequent workflow (=schedule=)
+
+#+BEAMER: \vfill
+#+begin_keyblock
+Target: the answer arrives before you have switched to another task, *under 10 minutes*.
+#+end_keyblock
+
+* Testing and verification
+
+** CI is only as good as its checks
+
+*** Left
+:PROPERTIES:
+:BEAMER_col: 0.5
+:END:
+
+- CI runs *your* checks, nothing more: no tests \rightarrow a green pipeline that proves nothing
+- Green means "*the checks we wrote* passed", not "the app works"
+- Lecture 3: unit tests for =cart.py=. But a bug can hide in many other places
+
+*** Right
+:PROPERTIES:
+:BEAMER_col: 0.5
+:END:
+
+#+BEAMER: \pause
+
+Two questions (B. Boehm, 1979):
+- *Verification*: are we building the product *right*? It matches the spec (tests, lint, types)
+- *Validation*: are we building the *right* product? Users want it (acceptance, demos, feedback)
+
+*** Conclusion
+:PROPERTIES:
+:BEAMER_env: ignoreheading
+:END:
+
+#+BEAMER: \vfill
+#+begin_warnblock
+A green badge with weak checks is worse than no badge: it gives *false confidence*.
+#+end_warnblock
+
+** Layers of defence
+
+#+begin_export latex
+\begin{center}
+\begin{tikzpicture}[
+  l/.style={draw, fill=accent!25, minimum width=0.5cm, minimum height=1.9cm},
+  h/.style={fill=white, draw=accent, circle, inner sep=0pt, minimum size=0.32cm}]
+  \foreach \x/\n/\ya/\yb in {0/Lint/0.6/-0.6, 1.9/Types/0.6/-0.6, 3.8/Unit/0.1/-0.6, 5.7/Integration/0.75/-0.6, 7.6/E2E/-0.1/-0.6, 9.5/Review/0.4/-0.6}
+    { \node[l] at (\x,0) {}; \node[h] at (\x,\ya) {}; \node[h] at (\x,\yb) {};
+      \node[font=\scriptsize, below] at (\x,-0.95) {\n}; }
+  \draw[-Stealth, very thick, devcol] (-1.3,0.6) node[left, font=\scriptsize]{bug 1} -- (3.5,0.6); \node[font=\scriptsize, devcol] at (3.8,1.2) {stopped by a unit test};
+  \draw[-Stealth, very thick, opscol] (-1.3,-0.6) node[left, font=\scriptsize]{bug 2} -- (11,-0.6) node[right, font=\scriptsize, align=left]{reaches\\ users};
+\end{tikzpicture}
+\end{center}
+#+end_export
+
+- Swiss cheese model (J. Reason, 1990): each layer has *holes*; a bug reaches users only when the holes of *all* layers line up
+- A linter never finds a wrong tax rate; a unit test never finds a missing file
+
+#+begin_keyblock
+No single check catches everything. Each kind of check answers a *different question*.
+#+end_keyblock
+
+** Static checks: read the code, do not run it
+
+#+ATTR_LATEX: :booktabs t :align p{2.4cm}p{6.4cm}p{4.2cm} :font \scriptsize
+| *Check*         | *Question it answers*                          | *Python tools*                |
+|-----------------+------------------------------------------------+-------------------------------|
+| Formatting      | Is the layout consistent?                      | =ruff format=, =black=        |
+| Linting         | Unused import, undefined name, suspicious code? | =ruff=, =pylint=              |
+| Type checking   | Do we pass a =str= where a =float= is expected? | =mypy=, =pyright=             |
+| Security (SAST) | =eval()=, SQL built by hand, weak crypto?      | =bandit=, CodeQL              |
+| Dependencies    | Do our libraries have known vulnerabilities?   | =pip-audit=, Dependabot       |
+| Secrets         | Did someone commit a password or token?        | =gitleaks=, GitHub scanning   |
+
+#+BEAMER: \vfill
+#+begin_keyblock
+Static checks are *cheap* (seconds) and need *no test to write*: put them first in the pipeline.
+#+end_keyblock
+
+** Functional tests: does it do the right thing?
+
+#+ATTR_LATEX: :booktabs t :align p{2.3cm}p{5.9cm}p{4.6cm} :font \scriptsize
+| *Test*          | *What it checks*                                 | *For our shop*                        |
+|-----------------+--------------------------------------------------+---------------------------------------|
+| Unit            | One function, isolated, milliseconds             | ~average([10, 20]) == 15~             |
+| Integration     | Several parts together (code + DB, + file, + API) | cart saved to and read from the DB    |
+| Contract        | Two services agree on the API format             | the front-end and the cart API        |
+| End-to-end (UI) | A robot uses the real app, like a user           | add to cart, pay, see the receipt     |
+| Acceptance      | The feature does what the *client* asked         | "Given 2 items, when..., then..."     |
+| Regression      | An old bug never comes back                      | the 150% discount test of lab 2       |
+| Smoke           | Is it alive at all? A few seconds, after deploy  | the home page answers 200             |
+
+#+BEAMER: \vfill
+#+begin_keyblock
+Regression is not a level but a *purpose*: any test kept after a bug is a regression test.
+#+end_keyblock
+
+** Non-functional tests: does it do it well?
+
+#+ATTR_LATEX: :booktabs t :align p{3.2cm}p{6.2cm}p{3.6cm} :font \scriptsize
+| *Test*                | *Question*                                            | *Tools*                 |
+|-----------------------+-------------------------------------------------------+-------------------------|
+| Performance / load    | Response time with 1\,000 users at once?              | =locust=, k6, JMeter    |
+| Stress                | Where does it break, and does it recover?             | same tools, more load   |
+| Security (DAST)       | Can an attacker break the *running* app?              | OWASP ZAP               |
+| Compatibility         | Every OS, browser, Python version?                    | matrix builds           |
+| Accessibility         | Usable with a screen reader, a keyboard only?         | axe, Lighthouse         |
+| Resilience (chaos)    | What if a server or the network dies?                 | Chaos Monkey (Netflix)  |
+| Exploratory (manual)  | What did nobody think of?                             | a curious human         |
+
+#+BEAMER: \vfill
+#+begin_keyblock
+A correct app that answers in 30 seconds, or leaks data, is still a broken app.
+#+end_keyblock
+
+** Can we trust the tests?
+
+*** Left
+:PROPERTIES:
+:BEAMER_col: 0.5
+:END:
+
+*Flaky tests*
+- Sometimes green, sometimes red, same code
+- Causes: time, randomness, order between tests, network, shared state
+- The team learns to "just re-run": CI loses its meaning
+- Fix it or quarantine it *now*
+
+*** Right
+:PROPERTIES:
+:BEAMER_col: 0.5
+:END:
+
+*Testing the tests*
+- *Mutation testing*: the tool changes the code (=<= \rightarrow =<==, =+= \rightarrow =-=); a good suite turns red. Tool: =mutmut=
+- *Property-based testing*: the tool generates hundreds of inputs ("for any list, =total >= 0="). Tool: =hypothesis=
+
+*** Conclusion
+:PROPERTIES:
+:BEAMER_env: ignoreheading
+:END:
+
+#+BEAMER: \vfill
+#+begin_warnblock
+A test that fails at random is worse than no test: people stop believing red.
+#+end_warnblock
+
+** When does each check run?
+
+#+begin_export latex
+\begin{center}
+\begin{tikzpicture}[
+  s/.style={draw, rounded corners, fill=devcol!12, text width=2.2cm, minimum height=0.8cm, align=center, font=\small},
+  c/.style={text width=2.2cm, align=left, font=\scriptsize, anchor=north}]
+  \node[s] (a) at (0,0)    {Laptop\\ \scriptsize every save};
+  \node[s] (b) at (2.7,0)  {Pull request\\ \scriptsize every push};
+  \node[s] (c) at (5.4,0)  {\texttt{main}\\ \scriptsize every merge};
+  \node[s] (d) at (8.1,0)  {Nightly\\ \scriptsize \texttt{schedule}};
+  \node[s] (e) at (10.8,0) {Production\\ \scriptsize after deploy};
+  \foreach \p/\q in {a/b, b/c, c/d, d/e} \draw[-Stealth, thick] (\p) -- (\q);
+  \node[c] at (0,-0.6)    {format, lint\\ unit tests\\ (pre-commit hook)};
+  \node[c] at (2.7,-0.6)  {lint, types\\ unit, integration\\ SAST, secrets};
+  \node[c] at (5.4,-0.6)  {all of the left\\ + build\\ + end-to-end};
+  \node[c] at (8.1,-0.6)  {load, DAST\\ dependency audit\\ long E2E suites};
+  \node[c] at (10.8,-0.6) {smoke tests\\ monitoring\\ (lectures 5, 10)};
+  \draw[-Stealth, thick, accent] (0,-2.2) -- (10.8,-2.2) node[midway, below, font=\scriptsize]{slower, costlier, more realistic \(\rightarrow\) less often};
+\end{tikzpicture}
+\end{center}
+#+end_export
+
+#+begin_keyblock
+Fast and cheap checks on *every* change; slow and expensive ones *less often*, but never skipped.
+#+end_keyblock
+
+* Going further
+
+** Matrix builds
+
+*** Left
+:PROPERTIES:
+:BEAMER_col: 0.55
+:END:
+
+#+BEAMER: \scriptsize
+#+begin_example
+jobs:
+  test:
+    runs-on: ${{ matrix.os }}
+    strategy:
+      matrix:
+        os: [ubuntu-latest, windows-latest]
+        python: ["3.10", "3.12"]
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: ${{ matrix.python }}
+#+end_example
+#+BEAMER: \normalsize
+
+*** Right
+:PROPERTIES:
+:BEAMER_col: 0.45
+:END:
+
+- One job definition, *4 jobs* in parallel: every OS \times every version
+- Your laptop has one OS and one Python; your users do not
+- Job names become =test (ubuntu-latest, 3.10)=...: update the required checks
+
+** Secrets
+
+- Pipelines need passwords: a deployment key, an API token (next sessions)
+- *Never* in the YAML: the workflow file is in the repository, and the repository may be public
+- Settings > Secrets and variables > Actions, then in the workflow:
+
+#+BEAMER: \small
+#+begin_example
+      - run: ./deploy.sh
+        env:
+          API_TOKEN: ${{ secrets.API_TOKEN }}
+#+end_example
+#+BEAMER: \normalsize
+
+- GitHub hides the value in the logs (=***=); PRs from forks do not get the secrets
+
+#+begin_warnblock
+Lecture 2 again: a secret pushed once stays in the history forever. The same holds for a secret printed in a public CI log.
+#+end_warnblock
+
+** When =main= is red
+
+*** Do
+:PROPERTIES:
+:BEAMER_col: 0.5
+:BEAMER_env: block
+:END:
+
+- Stop and look at it *now*: it blocks everyone
+- Fix it in minutes, or *revert* the guilty commit (lecture 2)
+- Then understand why CI did not stop it before the merge
+
+*** Don't
+:PROPERTIES:
+:BEAMER_col: 0.5
+:BEAMER_env: alertblock
+:END:
+
+- "It's probably flaky, re-run it until it is green"
+- Merge more changes on top of a red =main=
+- Disable the failing test "for now"
+
+*** Conclusion
+:PROPERTIES:
+:BEAMER_env: ignoreheading
+:END:
+
+#+BEAMER: \vfill
+#+begin_keyblock
+A team that gets used to red stops looking at the colour. Then CI is just decoration.
+#+end_keyblock
+
+** CI is not yet CD
+
+#+begin_export latex
+\begin{center}
+\begin{tikzpicture}[
+  s/.style={draw, rounded corners, minimum width=2.3cm, minimum height=0.9cm, align=center, font=\small},
+  arr/.style={-Stealth, very thick}]
+  \node[s, fill=devcol!15] (a) at (0,0) {Commit};
+  \node[s, fill=accent!25] (b) at (2.9,0) {Lint + test\\ \scriptsize today};
+  \node[s, fill=gray!15] (c) at (5.8,0) {Build artifact\\ \scriptsize next session};
+  \node[s, fill=gray!15] (d) at (8.7,0) {Deploy staging};
+  \node[s, fill=gray!15] (e) at (11.6,0) {Deploy prod};
+  \draw[arr] (a) -- (b); \draw[arr] (b) -- (c); \draw[arr] (c) -- (d); \draw[arr] (d) -- (e);
+  \draw[decorate, decoration={brace, amplitude=6pt, mirror}] (-1,-0.7) -- (4.1,-0.7) node[midway, below=7pt, font=\small]{Continuous Integration};
+  \draw[decorate, decoration={brace, amplitude=6pt, mirror}] (4.6,-0.7) -- (12.8,-0.7) node[midway, below=7pt, font=\small]{Continuous Delivery / Deployment};
+\end{tikzpicture}
+\end{center}
+#+end_export
+
+- CI answers: "is this change *correct and integrated*?"
+- CD answers: "can it go to *users*, safely, at any moment?"
+- The pipeline is one chain: each stage starts only if the previous one is green
+
+* Wrap-up
+
+** Back to "who ran the tests?"
+
+#+ATTR_LATEX: :booktabs t :align p{4.8cm}p{7.6cm} :font \small
+| *Problem*                                 | *CI answer*                                         |
+|-------------------------------------------+-----------------------------------------------------|
+| The reviewer forgot to run =pytest=       | It runs automatically on every PR                   |
+| A file was not committed                  | Fresh checkout: only committed files exist          |
+| A dependency is missing                   | Fresh machine: only declared dependencies exist     |
+| The PR was merged anyway                  | Required check: no green, no merge                  |
+| Style discussions in the review           | The linter decides, in CI                           |
+
+#+BEAMER: \vfill
+#+begin_keyblock
+CI turns "please remember to check" into "it is impossible not to check".
+#+end_keyblock
+
+** Key takeaways
+
+1. CI = a *practice* (integrate daily) + a *machine* (verify each integration)
+2. CI starts from a *fresh machine* and only what is committed: no more "works on my machine"
+3. GitHub Actions: a *workflow* file in the repository; events, jobs, steps, runners
+4. Results appear *in the PR*; a *required check* blocks the merge on red
+5. Machine first (lint, tests), human second (design, behaviour)
+6. Keep it *fast*; a red =main= is the top priority: fix or revert
+7. Many kinds of checks, each answering a *different question*: cheap ones on every change, expensive ones less often
+
+** Today's lab and further reading
+
+*** Lab 3
+:PROPERTIES:
+:BEAMER_col: 0.45
+:BEAMER_env: block
+:END:
+
+- A CI workflow for the shop, through a PR
+- Make it a required check on =main=
+- A forgotten file: red CI, blocked merge, fix
+- Add the =ruff= linter, and a status badge
+
+*** Reading
+:PROPERTIES:
+:BEAMER_col: 0.55
+:BEAMER_env: block
+:END:
+
+- M. Fowler, "Continuous Integration", martinfowler.com, 2006 (updated 2024)
+- GitHub Docs, "Understanding GitHub Actions", docs.github.com
+- J. Humble, D. Farley, /Continuous Delivery/, Addison-Wesley, 2010, ch. 3
+
+** Next session
+
+#+begin_center
+\Large *Continuous Delivery and Deployment*
+
+\large The tests are green. Now what? \\
+How do we get every green change to users, safely and at any moment?
+#+end_center

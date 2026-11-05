@@ -1,0 +1,177 @@
+#+TITLE: Lab 3: Continuous Integration
+#+SUBTITLE: GitHub Actions for the shop
+#+SETUPFILE: ../common/doc.setup
+#+OPTIONS: num:nil
+#+DATE: Duration: 1h30, in pairs
+
+* Part 0: Setup (5 min)
+
+Both, each on your own laptop:
+
+#+begin_src bash
+cd ~/devops/shop                 # B: ~/devops/devops-<nameA>-<nameB>
+git switch main && git pull
+source .venv/bin/activate
+pytest                           # all green before we start
+#+end_src
+
+* Part 1: A first workflow (25 min)
+
+*A* is the author, *B* the reviewer.
+
+*A*:
+
+#+begin_src bash
+git switch -c ci/pytest
+mkdir -p .github/workflows
+#+end_src
+
+Create =.github/workflows/ci.yml= (indent with spaces, never tabs):
+
+#+begin_src yaml
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - run: pip install -r requirements-dev.txt
+      - run: pytest
+#+end_src
+
+#+begin_src bash
+git add .github/workflows/ci.yml
+git commit -m "Run tests in CI"
+git push -u origin ci/pytest
+#+end_src
+
+Open the pull request, reviewer *B*. At the bottom of the PR, watch the check =CI / test= run.
+
+Both: click on the check (Details), open the =Run pytest= step and find the same output as on your laptop.
+
+*B*: review the workflow (one comment at least: ask a question about a line you do not understand), then *Approve*.
+
+*A*: Squash and merge, Delete branch. Then open the *Actions* tab: a new run started on =main=. Why?
+
+Both:
+
+#+begin_src bash
+git switch main && git pull
+#+end_src
+
+* Part 2: Make CI required (10 min)
+
+*A*, on GitHub: Settings > Rules > Rulesets > =protect-main=.
+
+- Check /Require status checks to pass/
+- Add checks: type =test= and select it (source: GitHub Actions)
+- Save changes
+
+* Part 3: "It works on my machine" (25 min)
+
+*B* is the author, *A* the reviewer.
+
+*B*:
+
+#+begin_src bash
+git switch -c feature/most-expensive
+#+end_src
+
+Create a new file =stats.py=:
+
+#+begin_src python
+def most_expensive(prices):
+    """Price of the most expensive item, None for an empty cart."""
+    if not prices:
+        return None
+    return max(prices)
+#+end_src
+
+In =test_cart.py=, add =from stats import most_expensive= under the other imports, and at the end:
+
+#+begin_src python
+def test_most_expensive():
+    assert most_expensive([10, 50, 20]) == 50
+
+def test_most_expensive_empty_cart():
+    assert most_expensive([]) is None
+#+end_src
+
+Do not run =git status= this time, just:
+
+#+begin_src bash
+pytest                           # all green on your laptop
+git commit -am "Add most expensive item"
+git push -u origin feature/most-expensive
+#+end_src
+
+Open the pull request, reviewer *A*.
+
+Both: wait for the check. Read the log of the red step: what is the error? Try the Merge button.
+
+*B*: find the problem with =git status=, fix it, push. Watch the check turn green.
+
+*A*: review, *Approve*. *B*: Squash and merge, Delete branch. Both: =git switch main && git pull=.
+
+* Part 4: A linter (15 min)
+
+*A* is the author, *B* the reviewer.
+
+*A*:
+
+#+begin_src bash
+git switch -c ci/ruff
+pip install ruff==0.17.1
+ruff check .                     # read the errors: what does ruff complain about?
+ruff check --fix .               # fix what can be fixed automatically
+git diff                         # what did ruff change?
+ruff check .                     # fix the rest by hand, until: All checks passed!
+pytest                           # still green
+#+end_src
+
+Add the line ~ruff==0.17.1~ to =requirements-dev.txt=. In =ci.yml=, add the step =ruff check .= *before* =pytest= (same indentation as the other steps):
+
+#+begin_src yaml
+      - run: pip install -r requirements-dev.txt
+      - run: ruff check .
+      - run: pytest
+#+end_src
+
+#+begin_src bash
+git commit -am "Lint the code in CI"
+git push -u origin ci/ruff
+#+end_src
+
+Pull request, review by *B*, merge when green.
+
+* Part 5: CI badge (5 min)
+
+One student, on a branch =docs/badge=, adds at the top of =README.md= (replace =<A-user>= and the repository name):
+
+#+begin_example
+![CI](https://github.com/<A-user>/devops-<nameA>-<nameB>/actions/workflows/ci.yml/badge.svg)
+#+end_example
+
+Pull request; the other approves; merge when green. Then check the badge on the repository's home page, and both: =git switch main && git pull=.
+
+* Cheat sheet
+
+#+ATTR_LATEX: :booktabs t :align ll
+| *Item*                                 | *Meaning*                                         |
+|----------------------------------------+---------------------------------------------------|
+| =.github/workflows/*.yml=              | Workflow files, run by GitHub Actions             |
+| =on: pull_request= / =push=            | Events that start the workflow                    |
+| =runs-on: ubuntu-latest=               | A fresh virtual machine for the job               |
+| =uses: owner/action@v4=                | A reusable action, pinned to a version            |
+| =run: <command>=                       | A shell command; exit code not 0 \rightarrow red  |
+| Actions tab                            | All runs, with their logs                         |
+| =ruff check .= / =ruff check --fix .=  | Lint the code / fix what can be fixed             |

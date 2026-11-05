@@ -5,6 +5,7 @@
 | 1       | Why DevOps?               | [slides](01-intro/slides.pdf)    |                                 |
 | 2       | Version control with Git  | [slides](02-git/slides.pdf)      | [Lab 1](02-git/lab.pdf)         |
 | 3       | Collaboration and quality | [slides](03-collab/slides.pdf)   | [Lab 2](03-collab/lab.pdf)      |
+| 4       | Continuous integration    | [slides](04-ci/slides.pdf)       | [Lab 3](04-ci/lab.pdf)          |
 
 ## Build
 
