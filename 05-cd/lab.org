@@ -1,0 +1,251 @@
+#+TITLE: Lab 4: Continuous Delivery
+#+SUBTITLE: Deploy the shop to GitHub Pages
+#+SETUPFILE: ../common/doc.setup
+#+OPTIONS: num:nil
+#+DATE: Duration: 1h30, in pairs
+
+* Part 0: Setup (5 min)
+
+*A*, on GitHub: Settings > Pages > Build and deployment > Source: *GitHub Actions*.
+
+Both, each on your own laptop:
+
+#+begin_src bash
+cd ~/devops/shop                 # B: ~/devops/devops-<nameA>-<nameB>
+git switch main && git pull
+source .venv/bin/activate
+pytest                           # all green before we start
+#+end_src
+
+* Part 1: Build an artifact (20 min)
+
+*A* is the author, *B* the reviewer.
+
+*A*:
+
+#+begin_src bash
+git switch -c feature/web-page
+#+end_src
+
+Create =build.py=:
+
+#+begin_src python
+"""Build the shop's web page into site/index.html."""
+import os
+
+from cart import shipping, total
+
+ITEMS = {"Notebook": 4, "Pen": 2, "Backpack": 45}
+VERSION = os.environ.get("GITHUB_SHA", "dev")[:7]
+
+def page(items, version):
+    prices = list(items.values())
+    rows = "".join(f"<li>{name}: {price}</li>" for name, price in items.items())
+    return f"""<!doctype html>
+<html>
+<head><meta charset="utf-8"><title>Shop</title></head>
+<body>
+<h1>Shop</h1>
+<ul>{rows}</ul>
+<p>Total, taxes included: {total(prices)}</p>
+<p>Shipping: {shipping(prices)}</p>
+<p><small>Version {version}</small></p>
+</body>
+</html>
+"""
+
+if __name__ == "__main__":
+    os.makedirs("site", exist_ok=True)
+    with open("site/index.html", "w") as f:
+        f.write(page(ITEMS, VERSION))
+    print("Built site/index.html, version", VERSION)
+#+end_src
+
+and =test_build.py=:
+
+#+begin_src python
+from build import page
+from cart import total
+
+
+def test_page_shows_items_total_and_version():
+    html = page({"Pen": 10}, "abc1234")
+    assert "<li>Pen: 10</li>" in html
+    assert f"Total, taxes included: {total([10])}" in html
+    assert "Version abc1234" in html
+#+end_src
+
+#+begin_src bash
+python3 build.py                 # Built site/index.html, version dev
+xdg-open site/index.html         # look at the page in your browser
+git status                       # site/ appears
+#+end_src
+
+Add =site/= to =.gitignore=. Then:
+
+#+begin_src bash
+pytest && ruff check .
+git add build.py test_build.py .gitignore
+git commit -m "Build the shop's web page"
+git push -u origin feature/web-page
+#+end_src
+
+Pull request, review by *B*, Squash and merge when green, Delete branch. Both: =git switch main && git pull=.
+
+* Part 2: Deploy after every merge (25 min)
+
+*B* is the author, *A* the reviewer.
+
+*B*:
+
+#+begin_src bash
+git switch -c cd/pages
+#+end_src
+
+At the end of =.github/workflows/ci.yml=, under =jobs:=, add two jobs (same indentation as =test:=):
+
+#+begin_src yaml
+  build:
+    needs: test
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - run: python build.py
+      - uses: actions/upload-pages-artifact@v3
+        with:
+          path: site
+
+  deploy:
+    needs: build
+    if: github.event_name == 'push'
+    runs-on: ubuntu-latest
+    permissions:
+      pages: write
+      id-token: write
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - id: deployment
+        uses: actions/deploy-pages@v4
+#+end_src
+
+#+begin_src bash
+git commit -am "Deploy the web page to GitHub Pages"
+git push -u origin cd/pages
+#+end_src
+
+Open the pull request, reviewer *A*. Watch the checks: which jobs run, and which one does not?
+
+Both: open the run (Details, then Summary): at the bottom, find the artifact =github-pages=.
+
+*A*: review, *Approve*. *B*: Squash and merge, Delete branch.
+
+Both: open the *Actions* tab and the new run on =main=: three jobs, one after the other. When =deploy= is green, click the link under it, or open =https://<A-user>.github.io/devops-<nameA>-<nameB>/=.
+
+#+begin_src bash
+git switch main && git pull
+git log -1 --format=%h           # compare with the version at the bottom of the page
+#+end_src
+
+* Part 3: Continuous delivery (15 min)
+
+*A*, on GitHub: Settings > Environments > =github-pages= > check /Required reviewers/, add *B*, Save protection rules.
+
+*A* is the author, *B* the reviewer:
+
+#+begin_src bash
+git switch -c feature/ruler
+#+end_src
+
+In =build.py=, add ="Ruler": 3= to =ITEMS=, then:
+
+#+begin_src bash
+pytest
+git commit -am "Sell rulers"
+git push -u origin feature/ruler
+#+end_src
+
+Pull request, review by *B*, Squash and merge. *Write down the time of the merge.*
+
+Both: in the Actions tab, the =deploy= job waits. *B*: Review deployments > =github-pages= > Approve and deploy.
+
+When the ruler is on the page, *write down the time*. Both: =git switch main && git pull=.
+
+* Part 4: A bad release, and a rollback (20 min)
+
+*B* is the author, *A* the reviewer.
+
+The tax rate changes to 19%. *B*:
+
+#+begin_src bash
+git switch -c fix/tax-rate
+#+end_src
+
+In =cart.py=, set =TAX_RATE = 19=, then:
+
+#+begin_src bash
+pytest                           # all green
+git commit -am "Update tax rate to 19%"
+git push -u origin fix/tax-rate
+#+end_src
+
+Pull request. *A*: a one-line diff, CI is green, a busy day: *Approve*. *B*: Squash and merge, then approve the deployment.
+
+Both: open the page. What is the total?
+
+Roll back, now, and *time it*. *A*: on the merged pull request, click *Revert*, then Create pull request. *B*: approve. *A*: merge. *B*: approve the deployment. Check the page.
+
+Then add the missing test. *B*:
+
+#+begin_src bash
+git switch main && git pull
+git switch -c test/tax-rate
+#+end_src
+
+In =test_cart.py=, also import =TAX_RATE= in the first =from cart import= line (first in the list), and add at the end:
+
+#+begin_src python
+def test_tax_rate_is_a_fraction():
+    assert 0 <= TAX_RATE < 1
+#+end_src
+
+Set =TAX_RATE = 19= again in =cart.py= and run =pytest=: the new test fails. Now set =TAX_RATE = 0.19=:
+
+#+begin_src bash
+pytest && ruff check .           # all green
+git commit -am "Set tax rate to 19% and check it is a fraction"
+git push -u origin test/tax-rate
+#+end_src
+
+Pull request, review by *A*, merge, approve the deployment. Both: =git switch main && git pull=.
+
+* Part 5: Release v1.0.0 (5 min)
+
+*A*, on GitHub: Code tab > Releases > Create a new release.
+- Choose a tag: type =v1.0.0=, then /Create new tag: v1.0.0 on publish/; target =main=
+- Title =v1.0.0=; click /Generate release notes/; Publish release
+
+Both:
+
+#+begin_src bash
+git fetch --tags
+git tag                          # v1.0.0
+#+end_src
+
+* Cheat sheet
+
+#+ATTR_LATEX: :booktabs t :align ll
+| *Item*                                   | *Meaning*                                          |
+|------------------------------------------+----------------------------------------------------|
+| =needs: test=                            | Start this job only when =test= is green           |
+| =if: github.event_name == 'push'=        | Run only on a push (a merge into =main=)           |
+| =actions/upload-pages-artifact=          | Store the built site as the run's artifact         |
+| =actions/deploy-pages=                   | Publish that artifact on GitHub Pages              |
+| =environment: github-pages=              | The target; its protection rules apply             |
+| Settings > Environments > Required reviewers | Turn deployment into delivery: a person approves |
+| Revert button on a merged PR             | A new PR that undoes it                            |
+| =vMAJOR.MINOR.PATCH=                     | Breaking change . new feature . bug fix            |
