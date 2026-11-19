@@ -1,0 +1,820 @@
+#+TITLE: Containers with Docker
+#+SUBTITLE: Ship the application with everything it needs to run
+#+SETUPFILE: ../common/slides.setup
+
+* Opening
+
+** Today's agenda
+
+1. From a page to an application
+2. Why containers?
+3. What a container is
+4. Building an image
+5. Running containers
+6. Docker in the pipeline
+7. Wrap-up
+
+#+BEAMER: \vfill
+#+begin_keyblock
+Today's question: the code is versioned, reviewed and tested. */Why/* does it still break on another machine?
+#+end_keyblock
+
+** A page is easy, an application is not
+
+*** Left
+:PROPERTIES:
+:BEAMER_col: 0.5
+:END:
+
+- Last lab: a folder of HTML. Any web server can show it
+- Now the shop must *run* Python for every visit
+- The server needs the right Python, the right packages, the right settings
+
+*** Right
+:PROPERTIES:
+:BEAMER_col: 0.5
+:END:
+
+#+BEAMER: \pause
+
+#+BEAMER: \scriptsize
+#+begin_example
+$ ssh server
+$ python3 app.py
+Traceback (most recent call last):
+  File "app.py", line 4, in <module>
+    from flask import Flask
+ModuleNotFoundError: No module named 'flask'
+#+end_example
+#+BEAMER: \normalsize
+
+*** Conclusion
+:PROPERTIES:
+:BEAMER_env: ignoreheading
+:END:
+
+#+BEAMER: \vfill
+#+begin_warnblock
+The code is in Git and tested. What is *around* the code is not: it lives on each machine.
+#+end_warnblock
+
+** The question of today
+
+#+begin_center
+\Large How do we ship the application *together with* its environment?
+
+#+BEAMER: \vspace{0.4cm}
+\large So that it runs the same on a laptop, in CI, in staging and in production
+#+end_center
+
+#+BEAMER: \pause
+#+BEAMER: \vspace{0.5cm}
+
+#+begin_keyblock
+Lecture 5: "build once, deploy everywhere". Today the artifact grows: code *plus* everything it needs.
+#+end_keyblock
+
+* Why containers?
+
+** "It works on my machine"
+
+*** Left
+:PROPERTIES:
+:BEAMER_col: 0.5
+:END:
+
+- A new teammate: two days to install the project, and a page of notes nobody updates
+- The laptop runs Python 3.12, the server Python 3.8
+- Two apps on one server need two versions of the same library
+- The server was configured by hand, years ago. Nobody can rebuild it
+
+*** Right
+:PROPERTIES:
+:BEAMER_col: 0.5
+:END:
+
+#+BEAMER: \pause
+
+#+BEAMER: \scriptsize
+#+begin_example
+# on the laptop (Python 3.12): fine
+def total(prices: list[float]) -> float:
+
+# on the server (Python 3.8)
+TypeError: 'type' object is not
+subscriptable
+#+end_example
+#+BEAMER: \normalsize
+
+*** Conclusion
+:PROPERTIES:
+:BEAMER_env: ignoreheading
+:END:
+
+#+BEAMER: \vfill
+#+begin_keyblock
+Each machine is a little different. Every difference is a bug waiting for production.
+#+end_keyblock
+
+** Why not a virtual environment?
+
+You already use =.venv= and =requirements.txt=. What do they fix?
+
+#+ATTR_LATEX: :booktabs t :align p{6.2cm}cp{4.6cm} :font \small
+| *Part of the environment*                 | *venv* | *Example of a break*            |
+|-------------------------------------------+--------+---------------------------------|
+| Python packages and their versions        | yes    | Flask 2 here, Flask 3 there     |
+| The Python interpreter itself             | no     | 3.12 here, 3.8 there            |
+| System libraries                          | no     | =libpq= missing for PostgreSQL  |
+| OS settings: timezone, locale, users      | no     | Dates one hour off on the server |
+| Other languages and services              | no     | Node, a database, a cache       |
+
+#+BEAMER: \vfill
+#+begin_keyblock
+=requirements.txt= describes the *packages*. We need a file that describes the whole *machine*.
+#+end_keyblock
+
+** The matrix from hell
+
+#+ATTR_LATEX: :booktabs t :align lcccc :font \small
+| *Application*        | *Laptop* | *CI* | *Staging* | *Production* |
+|----------------------+----------+------+-----------+--------------|
+| Shop (Python 3.12)   | ?        | ?    | ?         | ?            |
+| Old API (Python 3.8) | ?        | ?    | ?         | ?            |
+| Database             | ?        | ?    | ?         | ?            |
+| Front end (Node 20)  | ?        | ?    | ?         | ?            |
+
+#+BEAMER: \vfill
+
+- Every application on every machine: one more way to install, one more way to break
+- 4 applications x 4 environments = 16 setups to keep the same, by hand
+
+#+begin_keyblock
+We want one package per application, that runs on *any* machine.
+#+end_keyblock
+
+** What we tried before
+
+#+ATTR_LATEX: :booktabs t :align p{3.8cm}p{4.2cm}p{4.4cm} :font \small
+| *Approach*                  | *Idea*                              | *Problem*                            |
+|-----------------------------+-------------------------------------+--------------------------------------|
+| An install document         | Write down every step               | Out of date the next week            |
+| Configure servers by hand   | An expert installs, then fixes      | "Snowflake" servers: unique, fragile |
+| Virtual machines            | Ship a whole computer as a file     | Heavy: GBs, minutes to start         |
+| Containers                  | Ship the app and its files only     | Today's topic                        |
+
+#+BEAMER: \vfill
+#+begin_keyblock
+Virtual machines solved "same environment everywhere", at a high price. Containers keep the benefit, without the weight.
+#+end_keyblock
+
+** The shipping container
+
+*** Left
+:PROPERTIES:
+:BEAMER_col: 0.5
+:END:
+
+- Before 1956: each cargo loaded by hand, sacks, barrels, boxes. Days in every port
+- Malcom McLean: *one standard box*. Cranes, ships, trucks and trains all carry it
+- Nobody opens the box to move it
+
+*** Right
+:PROPERTIES:
+:BEAMER_col: 0.5
+:END:
+
+- Docker (2013) applies the same idea to software
+- Inside: anything, Python, Java, a database
+- Outside: always the same interface, =build=, =run=, =stop=
+- Laptop, CI, server: same box, same commands
+
+*** Conclusion
+:PROPERTIES:
+:BEAMER_env: ignoreheading
+:END:
+
+#+BEAMER: \vfill
+#+begin_keyblock
+A standard on the *outside* lets everybody move it, whatever is on the *inside*.
+#+end_keyblock
+
+** The image is the artifact
+
+#+ATTR_LATEX: :booktabs t :align p{4cm}p{8.4cm} :font \small
+| *Inside the image*      | *Example for the shop*                         |
+|-------------------------+------------------------------------------------|
+| Base system files       | Debian, without its kernel                     |
+| Language runtime        | Python 3.12                                    |
+| Libraries               | Flask 3.1.2                                    |
+| The code                | =app.py=, =build.py=, =cart.py=                |
+| How to start            | =flask --app app run=                          |
+
+#+BEAMER: \vfill
+
+- Built *once* by the pipeline, from one commit (lecture 5)
+- Run *the same* on every machine that has Docker: nothing else to install
+
+* What a container is
+
+** Container or virtual machine?
+
+#+begin_export latex
+\begin{center}
+\begin{tikzpicture}[
+  l/.style={draw, minimum height=0.55cm, align=center, font=\scriptsize, inner sep=1pt},
+  t/.style={font=\small\bfseries}]
+  % Virtual machines
+  \node[t] at (2.4,4.1) {Virtual machines};
+  \foreach \x/\a in {0/A,1.6/B,3.2/C} {
+    \node[l, fill=devcol!20, minimum width=1.5cm] at (\x+0.75,3.4) {App \a};
+    \node[l, fill=devcol!10, minimum width=1.5cm] at (\x+0.75,2.8) {Libraries};
+    \node[l, fill=opscol!20, minimum width=1.5cm] at (\x+0.75,2.2) {Guest OS};
+  }
+  \node[l, fill=gray!25, minimum width=4.7cm] at (2.35,1.55) {Hypervisor};
+  \node[l, fill=gray!40, minimum width=4.7cm] at (2.35,0.95) {Host OS};
+  \node[l, fill=gray!60, minimum width=4.7cm, text=white] at (2.35,0.35) {Hardware};
+  % Containers
+  \node[t] at (9.4,4.1) {Containers};
+  \foreach \x/\a in {7/A,8.6/B,10.2/C} {
+    \node[l, fill=devcol!20, minimum width=1.5cm] at (\x+0.75,3.4) {App \a};
+    \node[l, fill=devcol!10, minimum width=1.5cm] at (\x+0.75,2.8) {Libraries};
+  }
+  \node[l, fill=accent!30, minimum width=4.7cm] at (9.35,2.2) {Container engine (Docker)};
+  \node[l, fill=gray!40, minimum width=4.7cm] at (9.35,1.55) {Host OS, one shared kernel};
+  \node[l, fill=gray!60, minimum width=4.7cm, text=white] at (9.35,0.95) {Hardware};
+\end{tikzpicture}
+\end{center}
+#+end_export
+
+- A VM boots a *whole OS*: GBs, minutes to start, strong isolation
+- A container *shares the host's kernel*: MBs, starts in a second, lighter isolation
+
+** Lighter, so what?
+
+#+ATTR_LATEX: :booktabs t :align p{4.4cm}p{8cm} :font \small
+| *Property*                 | *What it makes possible*                                  |
+|----------------------------+-----------------------------------------------------------|
+| Starts in a second         | A fresh, clean container for every CI run, every test     |
+| A few MBs per app          | Dozens of apps on one server, each with its own libraries |
+| Built from a text file     | Rebuilt in minutes, by anyone, on any machine             |
+| Same kernel as the host    | A Linux image needs Linux: Docker Desktop hides a small VM on macOS and Windows |
+
+#+BEAMER: \vfill
+#+begin_keyblock
+A VM per app was too expensive, so teams shared servers, and their conflicts. A container per app is cheap: isolation becomes the default.
+#+end_keyblock
+
+** A container is a process
+
+=docker run= starts a normal Linux *process*, with walls around it. Each wall answers a problem:
+
+#+ATTR_LATEX: :booktabs t :align p{4.6cm}p{7.8cm} :font \small
+| *Wall*                          | *Why we want it*                                        |
+|---------------------------------+---------------------------------------------------------|
+| Its own *files* (the image)     | Two apps, two versions of a library, no conflict        |
+| Its own *network* and ports     | Two apps can both listen on port 8000                   |
+| Its own *process list*          | An app cannot see, or kill, its neighbours              |
+| *Limits* on CPU and memory      | One memory leak cannot take the whole server down       |
+
+#+BEAMER: \vfill
+
+- The walls are Linux features (namespaces, cgroups), not a new computer
+- Stop the process, and the container stops
+
+#+BEAMER: \vfill
+#+begin_keyblock
+Not a small VM: an isolated process. That is why it starts so fast.
+#+end_keyblock
+
+** Image and container
+
+#+begin_export latex
+\begin{center}
+\begin{tikzpicture}[
+  s/.style={draw, rounded corners, minimum width=2.6cm, minimum height=0.9cm, align=center, font=\small},
+  arr/.style={-Stealth, very thick}]
+  \node[s, fill=devcol!15] (d) at (0,0) {Dockerfile\\ \scriptsize the recipe};
+  \node[s, fill=accent!25] (i) at (4.2,0) {Image \texttt{shop}\\ \scriptsize read-only};
+  \node[s, fill=green!20] (c1) at (9,1.2) {Container 1\\ \scriptsize running};
+  \node[s, fill=green!20] (c2) at (9,0) {Container 2\\ \scriptsize running};
+  \node[s, fill=gray!15] (c3) at (9,-1.2) {Container 3\\ \scriptsize stopped};
+  \draw[arr] (d) -- node[above, font=\scriptsize]{build} (i);
+  \draw[arr] (i) -- node[above, font=\scriptsize, sloped]{run} (c1.west);
+  \draw[arr] (i) -- (c2.west);
+  \draw[arr] (i) -- (c3.west);
+\end{tikzpicture}
+\end{center}
+#+end_export
+
+- *Image*: a read-only template. *Container*: one running instance of it
+- Like a class and its objects: one image, as many containers as you want
+- Each container gets a thin *writable* layer on top; the image never changes
+
+#+BEAMER: \vfill
+#+begin_keyblock
+Why read-only? The image CI tested is, byte for byte, the image production runs.
+#+end_keyblock
+
+** Layers
+
+*** Left
+:PROPERTIES:
+:BEAMER_col: 0.45
+:END:
+
+#+begin_export latex
+\begin{tikzpicture}[l/.style={draw, minimum width=4.6cm, minimum height=0.6cm, font=\scriptsize, align=center}]
+  \node[l, fill=green!20] at (0,2.4) {Writable layer (the container)};
+  \node[l, fill=devcol!25] at (0,1.6) {\texttt{COPY . .}: your code, 20 KB};
+  \node[l, fill=devcol!15] at (0,0.8) {\texttt{RUN pip install}: Flask, 10 MB};
+  \node[l, fill=gray!25] at (0,0) {\texttt{FROM python:3.12-slim}, 120 MB};
+\end{tikzpicture}
+#+end_export
+
+*** Right
+:PROPERTIES:
+:BEAMER_col: 0.55
+:END:
+
+- Each instruction of the Dockerfile adds one *layer*
+- Layers are *shared*: ten images on =python:3.12-slim= store it once
+- Layers are *cached*: an unchanged step is not run again
+- Changing your code rebuilds only the top layer, if the Dockerfile is in the right order
+
+*** Conclusion
+:PROPERTIES:
+:BEAMER_env: ignoreheading
+:END:
+
+#+BEAMER: \vfill
+#+begin_keyblock
+You will meet layers every day through one thing: the *build cache*.
+#+end_keyblock
+
+* Building an image
+
+** A Dockerfile
+
+*** Left
+:PROPERTIES:
+:BEAMER_col: 0.55
+:END:
+
+#+BEAMER: \scriptsize
+#+begin_example
+FROM python:3.12-slim
+WORKDIR /app
+COPY requirements.txt .
+RUN pip install --no-cache-dir \
+      -r requirements.txt
+COPY . .
+EXPOSE 8000
+CMD ["flask", "--app", "app", "run",
+     "--host", "0.0.0.0", "--port", "8000"]
+#+end_example
+#+BEAMER: \normalsize
+
+*** Right
+:PROPERTIES:
+:BEAMER_col: 0.45
+:END:
+
+- A text file named =Dockerfile=, in the repository, *next to the code*
+- Reviewed in a pull request like any code
+- The install document, but *executable*: it cannot be out of date
+
+** Reading the Dockerfile
+
+#+ATTR_LATEX: :booktabs t :align p{4.3cm}p{8.4cm} :font \footnotesize
+| *Line*                    | *What it does, and why*                                         |
+|---------------------------+-----------------------------------------------------------------|
+| =FROM python:3.12-slim=   | Official image with Python: no install by hand, version pinned  |
+| =WORKDIR /app=            | Work in =/app=: one known place for the next lines and =CMD=    |
+| =COPY requirements.txt .= | Copy the dependency list *alone*, for the cache (next slides)   |
+| =RUN pip install ...=     | Run at *build* time: installed once, not at every start         |
+| =COPY . .=                | Copy the code *last*, because it changes most often             |
+| =EXPOSE 8000=             | Document the port, for readers and tools; it publishes nothing  |
+| =CMD [...]=               | Run when a *container starts*: every container starts the same way |
+
+#+BEAMER: \vfill
+#+begin_keyblock
+=RUN= happens once, when the image is built. =CMD= happens every time a container starts.
+#+end_keyblock
+
+** Build, then run
+
+#+begin_export latex
+\begin{center}
+\begin{tikzpicture}[
+  s/.style={draw, rounded corners, minimum width=2.5cm, minimum height=0.9cm, align=center, font=\small},
+  arr/.style={-Stealth, very thick}]
+  \node[s, fill=devcol!15] (d) at (0,0) {Dockerfile\\ \scriptsize + code};
+  \node[s, fill=accent!25] (i) at (4.5,0) {Image\\ \scriptsize \texttt{shop:1.0.0}};
+  \node[s, fill=green!20] (c) at (9,0) {Container\\ \scriptsize the shop runs};
+  \draw[arr] (d) -- node[above, font=\scriptsize\ttfamily]{docker build} (i);
+  \draw[arr] (i) -- node[above, font=\scriptsize\ttfamily]{docker run} (c);
+\end{tikzpicture}
+\end{center}
+#+end_export
+
+#+BEAMER: \small
+#+begin_example
+docker build -t shop:1.0.0 .             # "." = build from this folder
+docker images shop                       # the image and its size
+docker run --rm -p 8000:8000 shop:1.0.0  # --rm: delete it when it stops
+#+end_example
+#+BEAMER: \normalsize
+
+- =-t= gives the image a *name* and a *tag*: =name:tag=
+- The same image can be started on any machine that has Docker
+
+** The build cache: order matters
+
+*** Wrong
+:PROPERTIES:
+:BEAMER_col: 0.5
+:BEAMER_env: alertblock
+:END:
+
+#+BEAMER: \scriptsize
+#+begin_example
+COPY . .
+RUN pip install -r requirements.txt
+#+end_example
+#+BEAMER: \normalsize
+
+- One line changed in =cart.py=: =COPY . .= changed
+- Every layer after it is rebuilt: pip downloads Flask *again*
+
+*** Right
+:PROPERTIES:
+:BEAMER_col: 0.5
+:BEAMER_env: block
+:END:
+
+#+BEAMER: \scriptsize
+#+begin_example
+COPY requirements.txt .
+RUN pip install -r requirements.txt
+COPY . .
+#+end_example
+#+BEAMER: \normalsize
+
+- =requirements.txt= did not change: pip is =CACHED=
+- Only the last =COPY= runs: a build in seconds
+
+*** Conclusion
+:PROPERTIES:
+:BEAMER_env: ignoreheading
+:END:
+
+#+BEAMER: \vfill
+#+begin_keyblock
+What changes rarely goes first; what changes often goes last.
+#+end_keyblock
+
+** Keep things out: =.dockerignore=
+
+*** Left
+:PROPERTIES:
+:BEAMER_col: 0.4
+:END:
+
+#+BEAMER: \small
+#+begin_example
+.git
+.venv
+.env
+__pycache__/
+.pytest_cache/
+site/
+#+end_example
+#+BEAMER: \normalsize
+
+*** Right
+:PROPERTIES:
+:BEAMER_col: 0.6
+:END:
+
+- =COPY . .= copies *everything* in the folder, unless it is listed here
+- Same idea as =.gitignore= (lecture 2)
+- =.env=: a secret in an image can be read by anyone who gets the image
+- =.git=, =.venv=: a bigger image, and a cache broken by files that do not matter
+
+*** Conclusion
+:PROPERTIES:
+:BEAMER_env: ignoreheading
+:END:
+
+#+BEAMER: \vfill
+#+begin_warnblock
+An image is a file that is copied and shared. Never put a secret in it.
+#+end_warnblock
+
+** Tags and versions
+
+#+ATTR_LATEX: :booktabs t :align p{4.2cm}p{8.2cm} :font \small
+| *Tag*                 | *What it says*                                            |
+|-----------------------+-----------------------------------------------------------|
+| =shop:1.1.0=          | A release, semantic versioning (lecture 5)                |
+| =shop:4b23633=        | Exactly one commit: built by the pipeline from it         |
+| =shop:latest=         | Only "the last one built here". Default when no tag given |
+
+#+BEAMER: \vfill
+
+- The tag answers "what exactly runs in production?"
+- One image can have several tags: =1.1.0= and =4b23633= for the same build
+
+#+begin_warnblock
+=latest= moves with every build: never deploy it, you cannot know or roll back what runs.
+#+end_warnblock
+
+** Good habits
+
+#+ATTR_LATEX: :booktabs t :align p{5cm}p{7.4cm} :font \small
+| *Habit*                                 | *Why*                                              |
+|-----------------------------------------+----------------------------------------------------|
+| A small base image (=-slim=)            | Faster to download, less software to attack        |
+| Pin versions (Python 3.12, Flask 3.1.2) | Same build today and in six months |
+| Dependencies before code                | Fast builds thanks to the cache                    |
+| No secrets in the image                 | Images are copied and shared                       |
+| Only runtime packages, no pytest        | Smaller, fewer tools for an attacker               |
+| A =USER= that is not =root=             | A hacked app gets fewer rights                     |
+| One process per container               | Easy to start, stop, scale and read the logs       |
+
+* Running containers
+
+** Everyday commands
+
+#+ATTR_LATEX: :booktabs t :align p{7.2cm}p{5.6cm} :font \footnotesize
+| *Command*                                | *What it does*                                     |
+|------------------------------------------+----------------------------------------------------|
+| =docker run -d --name shop -p 8000:8000 shop= | Start in the background, with a name          |
+| =docker ps= (=-a=: also stopped ones)    | Which containers exist                             |
+| =docker logs shop=                       | What the app printed: the first place to look      |
+| =docker exec -it shop bash=              | A shell inside the running container               |
+| =docker stop shop=                       | Stop it, gently                                    |
+| =docker rm shop=                         | Delete it, and its writable layer                  |
+| =docker images=, =docker rmi=            | List and delete images                             |
+
+** Ports
+
+#+begin_export latex
+\begin{center}
+\begin{tikzpicture}[
+  s/.style={draw, rounded corners, minimum width=2.6cm, minimum height=0.9cm, align=center, font=\small},
+  arr/.style={-Stealth, very thick}]
+  \node[s, fill=gray!10] (b) at (0,0) {Browser};
+  \node[s, fill=devcol!15] (h) at (5,0) {Laptop\\ \scriptsize port 9000};
+  \draw[rounded corners, dashed, thick] (8.4,-1.1) rectangle (13,1.1);
+  \node[font=\scriptsize, anchor=north west] at (8.4,1.1) {container: its own network};
+  \node[s, fill=green!20] (c) at (10.7,-0.15) {Flask\\ \scriptsize 0.0.0.0:8000};
+  \draw[arr] (b) -- node[above, font=\scriptsize]{localhost:9000} (h);
+  \draw[arr] (h) -- node[above, font=\scriptsize\ttfamily]{-p 9000:8000} (c);
+\end{tikzpicture}
+\end{center}
+#+end_export
+
+- =-p HOST:CONTAINER= publishes a port of the container on the laptop
+- Without =-p=, the app runs but nobody outside can reach it
+- Inside, the app must listen on =0.0.0.0=: =127.0.0.1= is the container's *own* localhost
+
+#+BEAMER: \vfill
+#+begin_keyblock
+Why this indirection? Two shops can run side by side, both on 8000 inside: =-p 8001:8000= and =-p 8002:8000=. The app never changes, only the mapping.
+#+end_keyblock
+
+** Containers are disposable
+
+- A container writes in its own *writable layer*
+- =docker rm=: the layer is gone, and every file written in it
+- A new container always starts from the *same* image, in the same state
+
+#+BEAMER: \vfill
+
+#+begin_keyblock
+Good: no "fixed by hand inside the container". The fix goes into the Dockerfile, then a new image.
+#+end_keyblock
+
+#+begin_warnblock
+Bad for data: a database in a container needs a *volume* outside it (next session).
+#+end_warnblock
+
+** Pets and cattle
+
+*** Pets
+:PROPERTIES:
+:BEAMER_col: 0.5
+:BEAMER_env: alertblock
+:END:
+
+- A server with a name, set up by hand
+- Sick? Log in and nurse it back
+- Years of small fixes nobody wrote down
+- It dies: panic, nobody can rebuild it
+
+*** Cattle
+:PROPERTIES:
+:BEAMER_col: 0.5
+:BEAMER_env: block
+:END:
+
+- A container from an image, numbered, not named
+- Sick? Delete it, start a new one
+- Every change goes through the Dockerfile
+- It dies: start another, in a second
+
+*** Conclusion
+:PROPERTIES:
+:BEAMER_env: ignoreheading
+:END:
+
+#+BEAMER: \vfill
+#+begin_keyblock
+Why disposable is a feature: no drift, recovery in seconds, and ten copies are as easy as one.
+#+end_keyblock
+
+** Configuration from outside
+
+*** Left
+:PROPERTIES:
+:BEAMER_col: 0.5
+:END:
+
+#+BEAMER: \scriptsize
+#+begin_example
+VERSION = os.environ.get("VERSION", "dev")
+#+end_example
+
+#+begin_example
+docker run -e VERSION=1.1.0 shop
+docker run -e VERSION=staging shop
+#+end_example
+#+BEAMER: \normalsize
+
+*** Right
+:PROPERTIES:
+:BEAMER_col: 0.5
+:END:
+
+- The image is the *same* for staging and production (build once)
+- What differs is given at *start*: environment variables
+- Database URL, mode, secrets: never baked into the image
+
+*** Conclusion
+:PROPERTIES:
+:BEAMER_env: ignoreheading
+:END:
+
+#+BEAMER: \vfill
+#+begin_keyblock
+Why? One image per environment would mean production runs an image nobody tested. Same image, different settings. Next session: the Twelve-Factor App makes it a rule.
+#+end_keyblock
+
+* Docker in the pipeline
+
+** Docker in CI
+
+*** Left
+:PROPERTIES:
+:BEAMER_col: 0.58
+:END:
+
+#+BEAMER: \tiny
+#+begin_example
+  docker:
+    needs: test
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - run: docker build -t shop:${{ github.sha }} .
+      - run: docker run -d -p 8000:8000
+               shop:${{ github.sha }}
+      - run: curl --fail --retry 10
+               --retry-connrefused --retry-delay 1
+               http://localhost:8000/health
+#+end_example
+#+BEAMER: \normalsize
+
+*** Right
+:PROPERTIES:
+:BEAMER_col: 0.42
+:END:
+
+- A broken Dockerfile turns the PR *red*
+- Tag = commit ID: one image, one commit
+- A *smoke test*: the app in the image answers =/health=
+- Retries instead of =sleep=: no flaky test (lecture 4)
+
+*** Conclusion
+:PROPERTIES:
+:BEAMER_env: ignoreheading
+:END:
+
+#+BEAMER: \vfill
+#+begin_keyblock
+Why in CI, not on a laptop? A clean machine, one commit, no local leftovers, and the check runs *before* the merge.
+#+end_keyblock
+
+** Where Docker fits
+
+#+begin_export latex
+\begin{center}
+\begin{tikzpicture}[
+  s/.style={draw, rounded corners, minimum width=2.3cm, minimum height=1.1cm, align=center, font=\small},
+  arr/.style={-Stealth, very thick}]
+  \node[s, fill=devcol!15] (a) at (0,0) {Commit};
+  \node[s, fill=accent!25] (b) at (2.9,0) {Test\\ \scriptsize lecture 4};
+  \node[s, fill=accent!25] (c) at (5.8,0) {Build image\\ \scriptsize today};
+  \node[s, fill=gray!15, dashed] (d) at (8.7,0) {Registry\\ \scriptsize session 7};
+  \node[s, fill=gray!15, dashed] (e) at (11.6,0) {Run on servers\\ \scriptsize session 8};
+  \draw[arr] (a) -- (b); \draw[arr] (b) -- (c); \draw[arr, dashed] (c) -- (d); \draw[arr, dashed] (d) -- (e);
+\end{tikzpicture}
+\end{center}
+#+end_export
+
+- Today the image is built and checked, then thrown away with the runner
+- Next session: push it to a *registry*, a store of images, like GitHub for images
+- Then: many containers on many servers need an orchestrator, Kubernetes
+
+#+begin_keyblock
+The image is the artifact of the pipeline: built once, stored, then deployed everywhere.
+#+end_keyblock
+
+* Wrap-up
+
+** Back to "it works on my machine"
+
+#+ATTR_LATEX: :booktabs t :align p{5.4cm}p{7cm} :font \small
+| *Problem*                                  | *Docker answer*                               |
+|--------------------------------------------+-----------------------------------------------|
+| Two days to install the project            | =docker run=: only Docker to install          |
+| Python 3.12 here, 3.8 there                | Python is *inside* the image                  |
+| Two apps need two library versions         | Each app in its own container                 |
+| A server nobody can rebuild                | The Dockerfile rebuilds the image, any time   |
+| "What runs in production?"                 | An image tag, linked to one commit            |
+
+#+BEAMER: \vfill
+#+begin_keyblock
+The machine itself is now described in a file, versioned and reviewed like the code.
+#+end_keyblock
+
+** What Docker does not solve
+
+#+ATTR_LATEX: :booktabs t :align p{3.8cm}p{8.6cm} :font \footnotesize
+| *Limit*                 | *Why, and what helps*                                          |
+|-------------------------+----------------------------------------------------------------|
+| Weaker isolation        | One shared kernel: a kernel flaw reaches every container       |
+| Data is lost on =rm=    | Volumes, managed databases (session 7)                         |
+| Many servers            | Who restarts and balances containers? Kubernetes (session 8)   |
+| Bugs in your code       | Same image everywhere, *same bug* everywhere: tests still matter |
+| Old packages            | An image ages: rebuild it often, scan it for known flaws       |
+
+#+BEAMER: \vfill
+#+begin_keyblock
+Docker removes the differences *between* machines. It does not make the software correct or the server safe.
+#+end_keyblock
+
+** Key takeaways
+
+1. Code in Git is not enough: the *environment* must travel with it, or each machine breaks it differently
+2. A container is an *isolated process* sharing the host's kernel: light, so we can afford one per app and a fresh one per test
+3. The *image* is read-only, so what CI tested is what production runs
+4. Order the Dockerfile for the *cache*; keep secrets out, because images are copied
+5. Containers are *disposable* (cattle, not pets): configuration from outside, data in volumes
+6. The *image* is the artifact: built once by CI, tagged with the commit, so we always know what runs
+
+** Today's lab and further reading
+
+*** Lab 5
+:PROPERTIES:
+:BEAMER_col: 0.45
+:BEAMER_env: block
+:END:
+
+- Turn the shop into a Flask web app
+- Write its Dockerfile, build, run
+- Run it on your partner's laptop
+- Speed up the build with the cache
+- Explore and destroy a container
+- Build and check the image in CI
+
+*** Reading
+:PROPERTIES:
+:BEAMER_col: 0.55
+:BEAMER_env: block
+:END:
+
+- Docker documentation, "Get started" and "Building best practices", =docs.docker.com=
+- N. Poulton, /Docker Deep Dive/, 2023
+- M. Levinson, /The Box: How the Shipping Container Made the World Smaller and the World Economy Bigger/, Princeton University Press, 2006
+
+** Next session
+
+#+begin_center
+\Large *Compose, registries and the Twelve-Factor App*
+
+\large The shop needs a database: two containers that must work together. \\
+Where do we store our images, and how do we configure them?
+#+end_center

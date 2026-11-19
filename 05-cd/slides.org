@@ -1,0 +1,625 @@
+#+TITLE: Continuous Delivery
+#+SUBTITLE: From a green main to users, safely and often
+#+SETUPFILE: ../common/slides.setup
+
+* Opening
+
+** Today's agenda
+
+1. Green, and then?
+2. Why continuous delivery?
+3. The deployment pipeline
+4. Releasing safely
+5. Wrap-up
+
+#+BEAMER: \vfill
+#+begin_keyblock
+Today's question: */why/* should deploying be so frequent and so automatic that it becomes *boring*?
+#+end_keyblock
+
+** Green, and then?
+
+*** Left
+:PROPERTIES:
+:BEAMER_col: 0.5
+:END:
+
+- Last lab: the PR is green, approved, merged into =main=
+- The users still see the *old* version
+- Someone must update the server *by hand*, with a checklist
+- Only one person knows how. This week, they are on holiday
+
+*** Right
+:PROPERTIES:
+:BEAMER_col: 0.5
+:END:
+
+#+BEAMER: \pause
+
+#+BEAMER: \small
+#+begin_example
+Deployment checklist (v7, do NOT skip)
+ 1. ssh into the server
+ 2. git pull
+ 3. pip install -r requirements.txt
+ 4. copy the config file (which one?)
+ 5. restart the app
+ ...
+12. check the home page
+#+end_example
+#+BEAMER: \normalsize
+
+*** Conclusion
+:PROPERTIES:
+:BEAMER_env: ignoreheading
+:END:
+
+#+BEAMER: \vfill
+#+begin_warnblock
+A change waiting in =main= delivers nothing. A checklist run by hand is run wrong, sooner or later.
+#+end_warnblock
+
+** Two problems
+
+#+begin_center
+\Large 1. Deploying by hand is *slow* and *error-prone*
+
+#+BEAMER: \vspace{0.3cm}
+\Large 2. Because it hurts, we deploy *rarely*, so each release is *big*
+#+end_center
+
+#+BEAMER: \pause
+#+BEAMER: \vspace{0.5cm}
+
+#+begin_keyblock
+Same answer as last week: let a machine do it, then do it *small and often*.
+#+end_keyblock
+
+* Why continuous delivery?
+
+** Release night
+
+*** Left
+:PROPERTIES:
+:BEAMER_col: 0.55
+:END:
+
+- Every 3 months, 200 changes go to production *at once*
+- That night, something breaks. *Which* of the 200 changes?
+- Rolling back = losing 3 months of work
+- Next time the team is afraid: releases get *rarer*, so *bigger*
+
+*** Right
+:PROPERTIES:
+:BEAMER_col: 0.45
+:END:
+
+#+begin_export latex
+\begin{tikzpicture}[scale=0.8]
+  \draw[-Stealth] (0,0) -- (4.6,0) node[below left, font=\scriptsize]{changes per release};
+  \draw[-Stealth] (0,0) -- (0,3.6) node[above, font=\scriptsize]{risk};
+  \draw[very thick, opscol] (0.2,0.15) .. controls (2.5,0.4) and (3.6,1.5) .. (4.3,3.3);
+  \fill[devcol] (0.5,0.18) circle (3pt) node[above right, font=\scriptsize]{1 change};
+  \fill[opscol] (4.1,2.7) circle (3pt) node[left, font=\scriptsize]{200 changes};
+\end{tikzpicture}
+#+end_export
+
+*** Conclusion
+:PROPERTIES:
+:BEAMER_env: ignoreheading
+:END:
+
+#+BEAMER: \vfill
+#+begin_keyblock
+Big batches turn every release into a gamble. Small batches make each release *boring*.
+#+end_keyblock
+
+** What is continuous delivery?
+
+#+begin_center
+\large "Continuous Delivery is the ability to get changes of all types (new features, configuration changes, bug fixes and experiments) into production, or into the hands of users, *safely and quickly* in a *sustainable* way."
+
+\hfill J. Humble, continuousdelivery.com
+#+end_center
+
+#+BEAMER: \vfill
+
+- *All types*: not only features. A config change or an urgent fix takes the same road
+- *Safely and quickly*, together: not one against the other
+- *Sustainable*: no release nights, no heroes
+
+#+begin_keyblock
+Goal: =main= is *always* releasable. Releasing becomes a business decision, not a technical event.
+#+end_keyblock
+
+** Delivery or deployment?
+
+#+begin_export latex
+\begin{center}
+\begin{tikzpicture}[
+  s/.style={draw, rounded corners, minimum width=1.9cm, minimum height=0.8cm, align=center, font=\small},
+  arr/.style={-Stealth, very thick}]
+  \node[font=\small\bfseries, anchor=east] at (-1.1,0) {Delivery};
+  \node[s, fill=devcol!15] (a1) at (0,0) {Commit};
+  \node[s, fill=accent!20] (b1) at (2.4,0) {CI};
+  \node[s, fill=accent!20] (c1) at (4.8,0) {Staging};
+  \node[s, fill=yellow!30] (h1) at (7.2,0) {A person\\ \scriptsize approves};
+  \node[s, fill=green!20] (d1) at (9.6,0) {Production};
+  \draw[arr] (a1) -- (b1); \draw[arr] (b1) -- (c1); \draw[arr] (c1) -- (h1); \draw[arr] (h1) -- (d1);
+  \node[font=\small\bfseries, anchor=east] at (-1.1,-1.6) {Deployment};
+  \node[s, fill=devcol!15] (a2) at (0,-1.6) {Commit};
+  \node[s, fill=accent!20] (b2) at (2.4,-1.6) {CI};
+  \node[s, fill=accent!20] (c2) at (4.8,-1.6) {Staging};
+  \node[s, fill=green!20] (d2) at (9.6,-1.6) {Production};
+  \draw[arr] (a2) -- (b2); \draw[arr] (b2) -- (c2); \draw[arr] (c2) -- node[above, font=\scriptsize]{automatic} (d2);
+\end{tikzpicture}
+\end{center}
+#+end_export
+
+- Both: every green change is *deployable*, by the same automated pipeline
+- Continuous *delivery*: a person presses the button. Continuous *deployment*: no button
+- "CD" means either: always ask which one
+
+** If it hurts, do it more often
+
+- Integration, testing, deployment: painful tasks get *worse* when postponed
+  - more changes pile up, steps are forgotten, nobody remembers how
+- Doing them often *forces* you to make them small and to automate them
+- Lecture 2: integrate often. Lecture 4: test every change. Today: deploy every change
+
+#+BEAMER: \vfill
+#+begin_keyblock
+"If it hurts, do it more often, and bring the pain forward." (J. Humble, D. Farley, /Continuous Delivery/)
+#+end_keyblock
+
+** Measuring delivery: the four DORA metrics
+
+#+ATTR_LATEX: :booktabs t :align p{3.4cm}p{5.4cm}p{3.6cm} :font \small
+| *Metric*                | *Question*                                     | *Elite teams*       |
+|-------------------------+------------------------------------------------+---------------------|
+| Deployment frequency    | How often do we deploy to production?          | On demand, daily    |
+| Lead time for changes   | From commit to production, how long?           | Less than one day   |
+| Change failure rate     | Which share of deployments causes a failure?   | Low                 |
+| Time to restore service | After a failure, how long to recover?          | Less than one hour  |
+
+#+BEAMER: \vfill
+
+- Two metrics for *speed*, two for *stability*
+- N. Forsgren, J. Humble, G. Kim, /Accelerate/ (2018), and the yearly DORA reports
+
+** Speed and stability go together
+
+*** Low performers
+:PROPERTIES:
+:BEAMER_col: 0.5
+:BEAMER_env: alertblock
+:END:
+
+- Deploy every few months
+- Big, risky releases
+- Days to find and fix a failure
+- "Slow down to be safe"
+
+*** Elite performers
+:PROPERTIES:
+:BEAMER_col: 0.5
+:BEAMER_env: block
+:END:
+
+- Deploy several times a day
+- Small, boring releases
+- Minutes to restore
+- "Small is safe"
+
+*** Conclusion
+:PROPERTIES:
+:BEAMER_env: ignoreheading
+:END:
+
+#+BEAMER: \vfill
+#+begin_keyblock
+The data contradicts intuition: teams that deploy *more often* also *fail less* and *recover faster*.
+#+end_keyblock
+
+* The deployment pipeline
+
+** The deployment pipeline
+
+#+begin_export latex
+\begin{center}
+\begin{tikzpicture}[
+  s/.style={draw, rounded corners, minimum width=2.3cm, minimum height=1.1cm, align=center, font=\small},
+  arr/.style={-Stealth, very thick}]
+  \node[s, fill=devcol!15] (a) at (0,0) {Commit\\ \scriptsize push / merge};
+  \node[s, fill=accent!25] (b) at (2.9,0) {Commit stage\\ \scriptsize lint, tests};
+  \node[s, fill=accent!25] (c) at (5.8,0) {Build\\ \scriptsize one artifact};
+  \node[s, fill=accent!15] (d) at (8.7,0) {Staging\\ \scriptsize deploy, check};
+  \node[s, fill=green!20] (e) at (11.6,0) {Production\\ \scriptsize users};
+  \draw[arr] (a) -- (b); \draw[arr] (b) -- (c); \draw[arr] (c) -- (d); \draw[arr] (d) -- (e);
+  \draw[-Stealth, thick] (0,-1.1) -- (11.6,-1.1) node[midway, below, font=\scriptsize]{more confidence, but slower and more expensive at each stage};
+\end{tikzpicture}
+\end{center}
+#+end_export
+
+- A change that fails a stage *stops there*: it never reaches users
+- Every change takes *the same road*, also urgent fixes
+- Lecture 4's =ci.yml= is the first stage: today we add the next ones
+
+#+begin_keyblock
+The pipeline is the *only* way to production. No ssh, no copy by hand.
+#+end_keyblock
+
+** Build once, deploy everywhere
+
+*** Wrong
+:PROPERTIES:
+:BEAMER_col: 0.5
+:BEAMER_env: alertblock
+:END:
+
+- Build for staging, test it
+- *Build again* for production
+- Production runs a binary that nobody tested (other dependency version, other machine)
+
+*** Right
+:PROPERTIES:
+:BEAMER_col: 0.5
+:BEAMER_env: block
+:END:
+
+- Build *once*, in the pipeline
+- Deploy the *same* artifact to staging, then to production
+- Only the *configuration* changes between them
+
+*** Conclusion
+:PROPERTIES:
+:BEAMER_env: ignoreheading
+:END:
+
+#+BEAMER: \vfill
+#+begin_keyblock
+What was tested in staging is *byte for byte* what reaches production.
+#+end_keyblock
+
+** Artifacts and versions
+
+#+ATTR_LATEX: :booktabs t :align p{4cm}p{8.4cm} :font \small
+| *Project*                 | *Artifact*                                         |
+|---------------------------+----------------------------------------------------|
+| Python library            | A wheel (=.whl=), published on PyPI                |
+| Java application          | A =.jar= file                                      |
+| Static web site           | A folder of HTML, CSS and JavaScript files         |
+| Any application           | A Docker image (next session)                      |
+
+#+BEAMER: \vfill
+
+- Built by the pipeline from *one commit*, never by hand on a laptop
+- Named with a *version* linked to the commit ID: "what exactly is in production?" has an answer
+- Stored outside Git: an artifact store, a registry, a release page
+
+** Environments
+
+#+begin_export latex
+\begin{center}
+\begin{tikzpicture}[
+  s/.style={draw, rounded corners, minimum width=2.7cm, minimum height=1.1cm, align=center, font=\small},
+  arr/.style={-Stealth, very thick}]
+  \node[s, fill=devcol!15] (a) at (0,0) {Development\\ \scriptsize your laptop};
+  \node[s, fill=accent!20] (b) at (3.6,0) {CI\\ \scriptsize fresh runner};
+  \node[s, fill=accent!15] (c) at (7.2,0) {Staging\\ \scriptsize copy of production};
+  \node[s, fill=green!20] (d) at (10.8,0) {Production\\ \scriptsize real users, real data};
+  \draw[arr] (a) -- (b); \draw[arr] (b) -- (c); \draw[arr] (c) -- (d);
+\end{tikzpicture}
+\end{center}
+#+end_export
+
+- *Staging*: as close to production as possible. Every difference is a future surprise
+- Same artifact everywhere; what differs is *configuration*: URLs, database, secrets (session 7)
+- Production data stays in production: staging uses fake or anonymised data
+
+** A deployment in GitHub Actions
+
+*** Left
+:PROPERTIES:
+:BEAMER_col: 0.55
+:END:
+
+#+BEAMER: \tiny
+#+begin_example
+  build:
+    needs: test
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - run: python build.py
+      - uses: actions/upload-pages-artifact@v3
+        with:
+          path: site
+
+  deploy:
+    needs: build
+    if: github.event_name == 'push'
+    runs-on: ubuntu-latest
+    permissions:
+      pages: write
+      id-token: write
+    environment: github-pages
+    steps:
+      - uses: actions/deploy-pages@v4
+#+end_example
+#+BEAMER: \normalsize
+
+*** Right
+:PROPERTIES:
+:BEAMER_col: 0.45
+:END:
+
+- Two more jobs in =ci.yml=, after =test=
+- =needs=: a chain, each job waits for the previous one to be *green*
+- =build= runs for every PR too: a build error is caught *before* the merge
+- =deploy= runs only after a merge into =main=
+- =deploy= does not build: it publishes the artifact of =build=
+
+** Reading the deployment jobs
+
+#+ATTR_LATEX: :booktabs t :align p{5.4cm}p{7.3cm} :font \footnotesize
+| *Line*                               | *Meaning*                                                  |
+|--------------------------------------+------------------------------------------------------------|
+| =needs: test=                        | Start only if =test= is green                              |
+| =upload-pages-artifact=              | Store the built folder as the artifact of this run         |
+| =if: github.event_name == 'push'=    | Deploy after a merge, never for a pull request             |
+| =permissions: pages: write=          | This job, and only this one, may publish                   |
+| =id-token: write=                    | Prove who asks, without a stored password |
+| =environment: github-pages=          | The target; its protection rules apply                     |
+| =deploy-pages=                       | Publish the artifact built earlier, in the same run        |
+
+#+BEAMER: \vfill
+#+begin_keyblock
+Least privilege: the test and build jobs cannot publish anything; only =deploy= can.
+#+end_keyblock
+
+** Environments in GitHub
+
+- Settings > Environments: one per target (=staging=, =production=, =github-pages=)
+- *Protection rules*:
+  - Required reviewers: the job waits until a person *approves*
+  - Deployment branches: only =main= may deploy
+  - Wait timer: wait N minutes before deploying
+- *Secrets per environment*: the production password is not the staging one
+- *History*: the list of deployments, with what, when and who
+
+#+BEAMER: \vfill
+#+begin_keyblock
+One setting, "Required reviewers", turns continuous deployment into continuous delivery.
+#+end_keyblock
+
+* Releasing safely
+
+** Deploying is not releasing
+
+*** Left
+:PROPERTIES:
+:BEAMER_col: 0.5
+:END:
+
+- *Deploy*: the new code is on the servers
+- *Release*: users can see the feature
+- A *feature flag* separates the two
+
+#+BEAMER: \scriptsize
+#+begin_example
+if flags.enabled("new_checkout", user):
+    show_new_checkout()
+else:
+    show_old_checkout()
+#+end_example
+#+BEAMER: \normalsize
+
+*** Right
+:PROPERTIES:
+:BEAMER_col: 0.5
+:END:
+
+- Merge unfinished work, hidden behind a flag: short branches (lecture 2)
+- Turn it on for the team, then 10% of users, then everyone
+- A problem? Turn it off in one second, no deployment
+
+*** Conclusion
+:PROPERTIES:
+:BEAMER_env: ignoreheading
+:END:
+
+#+BEAMER: \vfill
+#+begin_warnblock
+Flags are debt: remove each flag once the feature is fully released.
+#+end_warnblock
+
+** Deployment strategies
+
+#+ATTR_LATEX: :booktabs t :align p{2.3cm}p{5.2cm}p{1.8cm}p{3.2cm} :font \small
+| *Strategy* | *How*                                        | *Downtime* | *Rollback*              |
+|------------+----------------------------------------------+------------+-------------------------|
+| Recreate   | Stop the old version, start the new one      | Yes        | Redeploy the old one    |
+| Rolling    | Replace the servers one by one               | No         | Slow, server by server  |
+| Blue-green | Two identical productions, switch the traffic | No        | Switch back: seconds    |
+| Canary     | New version for a small share of users first | No         | Stop the canary         |
+
+#+BEAMER: \vfill
+#+begin_keyblock
+Choose by risk and cost: blue-green doubles the servers; canary needs good monitoring to see a problem.
+#+end_keyblock
+
+** Blue-green deployment
+
+#+begin_export latex
+\begin{center}
+\begin{tikzpicture}[
+  s/.style={draw, rounded corners, minimum width=3cm, minimum height=1cm, align=center, font=\small},
+  arr/.style={-Stealth, very thick}]
+  \node[s, fill=gray!10] (u) at (0,0) {Users};
+  \node[s, fill=gray!20] (r) at (4,0) {Router};
+  \node[s, fill=devcol!20] (b) at (9,1) {Blue: v1\\ \scriptsize live};
+  \node[s, fill=green!20] (g) at (9,-1) {Green: v2\\ \scriptsize deployed, tested};
+  \draw[arr] (u) -- (r);
+  \draw[arr] (r) -- (b.west);
+  \draw[arr, dashed, green!50!black] (r) -- node[below left, font=\scriptsize]{switch} (g.west);
+\end{tikzpicture}
+\end{center}
+#+end_export
+
+- Deploy v2 on the idle copy (green), test it there, with production settings
+- Switch the router: all users now see v2, without downtime
+- A problem? Switch back to blue: rollback in *seconds*
+
+** Canary release
+
+#+begin_export latex
+\begin{center}
+\begin{tikzpicture}[
+  s/.style={draw, rounded corners, minimum width=3cm, minimum height=1cm, align=center, font=\small},
+  arr/.style={-Stealth, very thick}]
+  \node[s, fill=gray!10] (u) at (0,0) {Users};
+  \node[s, fill=gray!20] (r) at (4,0) {Router};
+  \node[s, fill=devcol!20] (b) at (9,1) {v1};
+  \node[s, fill=yellow!30] (g) at (9,-1) {v2 (canary)};
+  \draw[arr] (u) -- (r);
+  \draw[arr] (r) -- node[above left, font=\scriptsize]{95\,\%} (b.west);
+  \draw[arr] (r) -- node[below left, font=\scriptsize]{5\,\%} (g.west);
+  \node[font=\scriptsize, align=left, anchor=west] at (11,-1) {errors?\\ slow?};
+\end{tikzpicture}
+\end{center}
+#+end_export
+
+- A small share of users gets v2 first; watch the errors and response times
+- Fine? 25%, 50%, 100%. Not fine? Send everybody back to v1: few users saw the problem
+- The name: miners took a canary into the mine; if the bird fell ill, they got out
+
+** When it goes wrong
+
+*** Do
+:PROPERTIES:
+:BEAMER_col: 0.5
+:BEAMER_env: block
+:END:
+
+- *Roll back*: =git revert= (lecture 2), the pipeline redeploys the old behaviour
+- Or redeploy the *previous artifact*
+- *Roll forward* (fix and deploy) only if the fix is obvious and the pipeline fast
+- Then add the missing test
+
+*** Don't
+:PROPERTIES:
+:BEAMER_col: 0.5
+:BEAMER_env: alertblock
+:END:
+
+- Fix it by hand on the server, with ssh
+  - the next deployment erases the fix
+  - nobody knows what runs in production
+- Wait for "the person who knows"
+
+*** Conclusion
+:PROPERTIES:
+:BEAMER_env: ignoreheading
+:END:
+
+#+BEAMER: \vfill
+#+begin_keyblock
+Time to restore is a metric. A rollback that is *routine* is the best insurance.
+#+end_keyblock
+
+** Semantic versioning
+
+#+begin_center
+\Huge =v2.4.1=
+#+end_center
+
+#+ATTR_LATEX: :booktabs t :align lp{5.4cm}l :font \small
+| *Part*     | *Increase when...*                      | *Example*                        |
+|------------+-----------------------------------------+----------------------------------|
+| MAJOR (2)  | You break compatibility                 | Remove a function others use     |
+| MINOR (4)  | You add a feature, still compatible     | A new product in the shop        |
+| PATCH (1)  | You fix a bug, still compatible         | Fix the tax rate                 |
+
+#+BEAMER: \vfill
+
+- A Git *tag* (=v2.4.1=) marks the commit; a GitHub *Release* adds notes and artifacts
+- Users read the number and know the risk of upgrading (semver.org)
+
+** What continuous delivery needs
+
+#+ATTR_LATEX: :booktabs t :align p{6.2cm}p{6.2cm} :font \small
+| *Practice*                                 | *Where in this course*          |
+|--------------------------------------------+---------------------------------|
+| Small changes, short branches              | Lectures 2 and 3                |
+| Tests you trust                            | Lecture 3                       |
+| CI on every change, =main= always green    | Lecture 4                       |
+| Automated, repeatable deployment           | Today, then Docker (session 6)  |
+| Configuration outside the code             | Session 7                       |
+| Monitoring to see a bad release            | Session 10                      |
+
+#+BEAMER: \vfill
+#+begin_keyblock
+CD is not a tool you install: it is the sum of the practices of this course.
+#+end_keyblock
+
+* Wrap-up
+
+** Back to release night
+
+#+ATTR_LATEX: :booktabs t :align p{5.2cm}p{7.2cm} :font \small
+| *Problem*                                  | *CD answer*                                     |
+|--------------------------------------------+-------------------------------------------------|
+| Deployment by hand, one person knows how   | A pipeline in a file: anyone can run it         |
+| 200 changes at once                        | One small change per deployment                 |
+| Which change broke it?                     | Each deployment = one commit ID                 |
+| Rollback takes the night                   | Revert, or redeploy the previous artifact       |
+| Fear of releasing                          | Frequent, boring releases                       |
+
+#+BEAMER: \vfill
+#+begin_keyblock
+CD turns the release night into a non-event.
+#+end_keyblock
+
+** Key takeaways
+
+1. A green =main= that is not deployed delivers *nothing*
+2. Small, frequent releases are *faster and safer* (DORA: speed and stability together)
+3. *Delivery*: always deployable, a person decides. *Deployment*: every green change goes out
+4. One pipeline, the only road to production; *build once*, deploy the same artifact
+5. Deploying is not releasing: feature flags, blue-green, canary
+6. Plan the failure: rollback must be fast and routine; versions tell what changed
+
+** Today's lab and further reading
+
+*** Lab 4
+:PROPERTIES:
+:BEAMER_col: 0.45
+:BEAMER_env: block
+:END:
+
+- Build the shop's web page as an artifact
+- Deploy it to GitHub Pages after every merge
+- Add an approval: continuous delivery
+- Ship a bad release, roll it back
+- Publish release =v1.0.0=
+
+*** Reading
+:PROPERTIES:
+:BEAMER_col: 0.55
+:BEAMER_env: block
+:END:
+
+- J. Humble, D. Farley, /Continuous Delivery/, Addison-Wesley, 2010, ch. 1 and 5
+- N. Forsgren, J. Humble, G. Kim, /Accelerate/, IT Revolution, 2018
+- M. Fowler, "BlueGreenDeployment", 2010, and P. Hodgson, "Feature Toggles", 2017, martinfowler.com
+- semver.org
+
+** Next session
+
+#+begin_center
+\Large *Containers with Docker*
+
+\large "It works on my machine", for the whole machine. \\
+How do we ship the application *with* everything it needs to run?
+#+end_center

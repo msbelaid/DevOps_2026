@@ -1,0 +1,282 @@
+#+TITLE: Lab 5: Containers with Docker
+#+SUBTITLE: Package the shop with everything it needs
+#+SETUPFILE: ../common/doc.setup
+#+OPTIONS: num:nil
+#+DATE: Duration: 1h30, in pairs
+
+* Part 0: Setup (5 min)
+
+Both, each on your own laptop:
+
+#+begin_src bash
+docker run hello-world           # "Hello from Docker!"
+cd ~/devops/shop                 # B: ~/devops/devops-<nameA>-<nameB>
+git switch main && git pull
+source .venv/bin/activate
+pytest                           # all green before we start
+#+end_src
+
+* Part 1: A real web app (15 min)
+
+*A* is the author, *B* the reviewer.
+
+The page of Lab 4 was built once, then served as a file. Now a Python program answers every visit. *A*:
+
+#+begin_src bash
+git switch -c feature/web-app
+#+end_src
+
+Create =app.py=:
+
+#+begin_src python
+"""Serve the shop's web page."""
+import os
+
+from flask import Flask
+
+from build import ITEMS, page
+
+app = Flask(__name__)
+VERSION = os.environ.get("VERSION", "dev")
+
+
+@app.route("/")
+def home():
+    return page(ITEMS, VERSION)
+
+
+@app.route("/health")
+def health():
+    return {"status": "ok"}
+#+end_src
+
+and =test_app.py=:
+
+#+begin_src python
+from app import app
+
+
+def test_home_page():
+    response = app.test_client().get("/")
+    assert response.status_code == 200
+    assert "<h1>Shop</h1>" in response.text
+
+
+def test_health():
+    response = app.test_client().get("/health")
+    assert response.json == {"status": "ok"}
+#+end_src
+
+#+begin_src bash
+pytest                           # ModuleNotFoundError: No module named 'flask'
+#+end_src
+
+The app now needs a package. Create =requirements.txt= containing the line ~flask==3.1.2~, and add the line =-r requirements.txt= at the top of =requirements-dev.txt=. Then:
+
+#+begin_src bash
+pip install -r requirements-dev.txt
+pytest && ruff check .
+flask --app app run --port 8000  # open http://localhost:8000, then Ctrl+C
+git add app.py test_app.py requirements.txt requirements-dev.txt
+git commit -m "Serve the shop with Flask"
+git push -u origin feature/web-app
+#+end_src
+
+Pull request, review by *B*, Squash and merge when green, Delete branch. Both: =git switch main && git pull=.
+
+* Part 2: A first image (20 min)
+
+*B* is the author, *A* the reviewer.
+
+*B*:
+
+#+begin_src bash
+git switch -c docker/image
+pip install -r requirements-dev.txt
+#+end_src
+
+Create =Dockerfile= (no extension):
+
+#+begin_example
+FROM python:3.12-slim
+WORKDIR /app
+COPY . .
+RUN pip install --no-cache-dir -r requirements.txt
+EXPOSE 8000
+CMD ["flask", "--app", "app", "run", "--port", "8000"]
+#+end_example
+
+#+begin_src bash
+docker build -t shop .           # read each step in the output
+docker images shop               # your image, and its size
+docker run --rm -p 8000:8000 shop
+#+end_src
+
+Open =http://localhost:8000=. It does not answer. Read the line =Running on ...= in the logs, then Ctrl+C.
+
+In the =CMD= line, add ="--host", "0.0.0.0"= after ="run"=. Then:
+
+#+begin_src bash
+docker build -t shop .
+docker run --rm -p 8000:8000 shop    # now the page answers; then Ctrl+C
+git add Dockerfile
+git commit -m "Package the shop in a Docker image"
+git push -u origin docker/image
+#+end_src
+
+Pull request, review by *A*, Squash and merge, Delete branch.
+
+* Part 3: Works on your partner's machine (10 min)
+
+*A*, in a *new terminal* (no virtual environment):
+
+#+begin_src bash
+cd ~/devops/shop && git switch main && git pull
+docker build -t shop .
+docker run --rm -p 8000:8000 shop    # the same page; then Ctrl+C
+#+end_src
+
+Compare your laptop and the container:
+
+#+begin_src bash
+python3 --version;  docker run --rm shop python --version
+grep PRETTY /etc/os-release;  docker run --rm shop grep PRETTY /etc/os-release
+uname -r;  docker run --rm shop uname -r
+docker run --rm shop pip list        # flask is there; is pytest?
+#+end_src
+
+* Part 4: The build cache (15 min)
+
+*A* is the author, *B* the reviewer.
+
+*A*:
+
+#+begin_src bash
+git switch -c docker/cache
+#+end_src
+
+In =build.py=, change the price of the =Pen= to =3=, then:
+
+#+begin_src bash
+time docker build -t shop .          # pip runs again: why?
+docker run --rm shop ls -a           # what is in the image?
+docker run --rm shop cat .env        # no .env? create it as in Lab 1, rebuild
+#+end_src
+
+Reorder the =Dockerfile=: dependencies first, code after.
+
+#+begin_example
+FROM python:3.12-slim
+WORKDIR /app
+COPY requirements.txt .
+RUN pip install --no-cache-dir -r requirements.txt
+COPY . .
+EXPOSE 8000
+CMD ["flask", "--app", "app", "run", "--host", "0.0.0.0", "--port", "8000"]
+#+end_example
+
+Create =.dockerignore=:
+
+#+begin_example
+.git
+.venv
+.env
+__pycache__/
+.pytest_cache/
+.ruff_cache/
+site/
+#+end_example
+
+#+begin_src bash
+docker build -t shop .               # one slow build to fill the cache
+#+end_src
+
+Change the price of the =Pen= back to =2=:
+
+#+begin_src bash
+time docker build -t shop .          # CACHED: compare the time
+docker run --rm shop ls -a           # no .git, no .venv, no .env
+source .venv/bin/activate
+pytest && ruff check .
+git add Dockerfile .dockerignore
+git commit -m "Cache dependencies and ignore local files in the image"
+git push -u origin docker/cache
+#+end_src
+
+Pull request, review by *B*, merge, Delete branch. Both: =git switch main && git pull=.
+
+* Part 5: Inside a container (10 min)
+
+Both, each on your own laptop:
+
+#+begin_src bash
+docker build -t shop .
+docker run -d --name shop -p 8000:8000 -e VERSION=1.1.0 shop
+docker ps                            # it runs in the background
+#+end_src
+
+Open the page: which version does it show? Then:
+
+#+begin_src bash
+docker logs shop                     # your visits
+docker exec -it shop bash            # a shell inside the container
+#+end_src
+
+Inside: =ls=, =whoami=, =echo hello > note.txt=, =exit=.
+
+#+begin_src bash
+docker stop shop && docker rm shop
+docker run -d --name shop -p 8000:8000 shop
+docker exec shop cat note.txt        # ?
+docker rm -f shop
+#+end_src
+
+* Part 6: Docker in CI (15 min)
+
+*B* is the author, *A* the reviewer.
+
+*B*:
+
+#+begin_src bash
+git switch -c ci/docker
+#+end_src
+
+In =.github/workflows/ci.yml=, under =jobs:=, add a job (same indentation as =test:=):
+
+#+begin_src yaml
+  docker:
+    needs: test
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - run: docker build -t shop:${{ github.sha }} .
+      - run: docker run -d -p 8000:8000 shop:${{ github.sha }}
+      - run: curl --fail --retry 10 --retry-connrefused --retry-delay 1 http://localhost:8000/health
+#+end_src
+
+#+begin_src bash
+git commit -am "Build and check the Docker image in CI"
+git push -u origin ci/docker
+#+end_src
+
+Open the pull request, reviewer *A*. Open the =docker= job and read the output of each step.
+
+*A*, on GitHub: Settings > Rules > Rulesets > =protect-main= > Add checks: =docker=, Save changes.
+
+*A*: review, *Approve*. *B*: Squash and merge (approve the deployment as in Lab 4), Delete branch. Both: =git switch main && git pull=.
+
+* Cheat sheet
+
+#+ATTR_LATEX: :booktabs t :align ll
+| *Command or line*                        | *Meaning*                                          |
+|------------------------------------------+----------------------------------------------------|
+| =FROM python:3.12-slim=                  | Start from an image that already has Python        |
+| =COPY requirements.txt .= then =RUN pip= | Dependencies first: cached while only code changes |
+| =CMD [...]=                              | The command the container runs when it starts      |
+| =docker build -t shop .=                 | Build an image named =shop= from this folder       |
+| =docker run --rm -p 8000:8000 shop=      | Start a container; host port 8000 to its port 8000 |
+| =-d=, =--name shop=, =-e KEY=value=      | In the background, with a name, with a setting     |
+| =docker ps=, =docker logs shop=          | Running containers, and what one prints            |
+| =docker exec -it shop bash=              | Open a shell inside a running container            |
+| =docker stop shop=, =docker rm shop=     | Stop it, then delete it (and its files)            |
+| =docker images=                          | The images on this machine                         |
